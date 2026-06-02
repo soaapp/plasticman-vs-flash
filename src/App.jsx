@@ -1,5 +1,5 @@
-import React, { useState, useRef } from "react";
-import { Zap, Swords, ChevronRight, Repeat, Loader2, Trophy, SkipForward } from "lucide-react";
+import React, { useState, useRef, useEffect } from "react";
+import { Zap, Swords, ChevronRight, Repeat, Loader2, Trophy, SkipForward, BookOpen } from "lucide-react";
 import { callAgent, parseJSON } from "./api.js";
 
 /* ------------------------------------------------------------------ *
@@ -94,12 +94,20 @@ const CSS = `
 .qs-card {
   background: linear-gradient(160deg, var(--panel), #0b0b14);
   border:3px solid #000; border-radius:18px; padding:20px; position:relative; overflow:hidden;
-  box-shadow: 9px 9px 0 rgba(0,0,0,.55);
+  box-shadow: 9px 9px 0 rgba(0,0,0,.55); cursor:pointer; outline:none;
+  transition: box-shadow .16s ease, filter .16s ease;
   opacity:0; transform: translateY(28px) rotate(var(--rot)); animation: cardIn .6s cubic-bezier(.2,.85,.25,1) forwards;
 }
 .qs-card.flash { --rot:-1.5deg; border-top:7px solid var(--flash); animation-delay:.05s; }
 .qs-card.plastic { --rot:1.5deg; border-top:7px solid var(--plastic); animation-delay:.16s; }
 @keyframes cardIn { to { opacity:1; transform: translateY(0) rotate(var(--rot)); } }
+.qs-card:hover, .qs-card:focus-visible { filter: brightness(1.07); }
+.qs-card.flash:hover, .qs-card.flash:focus-visible { box-shadow: 9px 9px 0 rgba(0,0,0,.55), 0 0 34px rgba(238,28,37,.42); }
+.qs-card.plastic:hover, .qs-card.plastic:focus-visible { box-shadow: 9px 9px 0 rgba(0,0,0,.55), 0 0 34px rgba(255,45,149,.42); }
+.qs-dossier-hint { margin-top:16px; padding-top:12px; border-top:1px dashed rgba(255,255,255,.14);
+  font-family:'Space Mono',monospace; font-size:11px; letter-spacing:.14em; color:var(--accent);
+  display:flex; align-items:center; gap:6px; transition: color .16s ease; }
+.qs-card:hover .qs-dossier-hint, .qs-card:focus-visible .qs-dossier-hint { color:var(--paper); }
 .qs-emblem { width:74px; height:74px; border-radius:50%; display:grid; place-items:center; margin-bottom:10px; border:3px solid #000; }
 .qs-emblem.flash { background: radial-gradient(circle, var(--flash-gold), #c9a000); box-shadow:0 0 26px rgba(255,210,0,.5); }
 .qs-emblem.plastic { background: radial-gradient(circle, var(--plastic), #b8005f); box-shadow:0 0 26px rgba(255,45,149,.5); }
@@ -229,6 +237,35 @@ const CSS = `
 .qs-footer { margin-top:26px; display:flex; gap:12px; flex-wrap:wrap; justify-content:center; }
 .qs-spin { animation: spin 1s linear infinite; }
 .qs-err { background:rgba(238,28,37,.16); border:1px solid var(--flash); padding:12px 14px; border-radius:10px; font-size:14px; margin-top:14px; }
+
+/* ---------- dossier modal ---------- */
+.qs-modal { position:fixed; inset:0; z-index:60; display:grid; place-items:center; padding:18px;
+  background:rgba(6,6,12,.76); backdrop-filter:blur(5px); animation: fadeIn .2s ease; }
+@keyframes fadeIn { from{ opacity:0 } to{ opacity:1 } }
+.qs-dossier { width:min(660px,100%); max-height:88vh; overflow-y:auto; position:relative;
+  border:4px solid #000; border-radius:20px; padding:26px 26px 30px;
+  background:linear-gradient(165deg,#1b1526,#0b0b14); box-shadow:14px 14px 0 rgba(0,0,0,.55);
+  animation: slamIn .45s cubic-bezier(.2,1.3,.4,1) both; }
+.qs-dossier.flash { border-top:8px solid var(--flash); }
+.qs-dossier.plastic { border-top:8px solid var(--plastic); }
+.qs-dossier .close { position:absolute; top:14px; right:16px; width:34px; height:34px; border-radius:50%;
+  border:2px solid #000; background:rgba(255,255,255,.1); color:var(--paper); font-family:'Space Mono',monospace;
+  font-size:14px; cursor:pointer; line-height:1; transition: background .15s ease; }
+.qs-dossier .close:hover { background:rgba(255,255,255,.22); }
+.dossier-head { display:flex; align-items:center; gap:16px; padding-right:36px; }
+.dossier-origin { color:var(--paper); opacity:.92; line-height:1.6; margin:16px 0 0; font-size:15px; }
+.dossier-sec { margin-top:22px; }
+.dossier-sec .seclab { font-family:'Space Mono',monospace; letter-spacing:.18em; font-size:11px;
+  text-transform:uppercase; color:var(--accent); margin-bottom:10px; }
+.dossier-sec ul { margin:0; padding-left:18px; }
+.dossier-sec li { margin:7px 0; line-height:1.55; font-size:14.5px; color:var(--paper); }
+.clash-row { display:grid; grid-template-columns:128px 1fr; gap:12px; padding:10px 0; font-size:14px; line-height:1.5;
+  border-top:1px solid rgba(255,255,255,.09); }
+.clash-row:first-of-type { border-top:none; padding-top:2px; }
+.clash-who { font-family:'Bangers'; letter-spacing:.03em; font-size:18px; line-height:1.1; }
+.qs-dossier.flash .clash-who { color:var(--flash); }
+.qs-dossier.plastic .clash-who { color:var(--plastic); }
+@media (max-width:520px){ .clash-row{ grid-template-columns:1fr; gap:2px; } }
 `;
 
 /* ----------------------------- agents ----------------------------- */
@@ -238,8 +275,8 @@ const PM_SYS = `You are Eel O'Brian, PLASTIC MAN, in a comedic comic-book battle
 
 const JUDGE_SYS = `You are the QUANTUM REFEREE narrating a Flash vs Plastic Man bout for a hyped lunchtime crowd. Given both fighters' moves this round, write vivid, hilarious play-by-play — 2 to 3 sentences, about 50 words, packed with jokes. Then judge who edged the round. Core running joke: the Flash cannot actually damage the indestructible, rubbery Plastic Man, and can never catch or pin him either — so lean into glorious stalemate energy and absurd comedy. Respond with ONLY minified JSON, no markdown: {"narration":"...","edge":"flash"|"plastic"|"even"}`;
 
-const ROUNDS = 5;
-const READ_MS = 10_000; // dwell time per round so the crowd can read the jokes
+const ROUNDS = 3;
+const READ_MS = 60_000; // ~1 minute per round so the crowd can savor the quips
 
 /* comic onomatopoeia, chosen by who edged the round */
 const FX = {
@@ -260,12 +297,52 @@ const FIGHTERS = {
     alias: "Barry Allen · Speed Force conduit",
     stats: [["Speed", 100], ["Strength", 76], ["Durability", 58], ["Intellect", 88], ["Catch Rate vs Foe", 22]],
     powers: ["Light-speed", "Phasing", "Infinite Mass Punch", "Time Travel", "Speed Steal"],
+    dossier: {
+      tagline: "Fastest Man Alive · Justice League founding member",
+      origin:
+        "Police forensic scientist Barry Allen was struck by lightning and bathed in chemicals, bonding him to the Speed Force — the cosmic energy field behind all motion.",
+      clashes: [
+        { who: "SUPERMAN", note: "They've raced for charity more than once. Officially it's always 'too close to call' — though Barry has crossed the line first." },
+        { who: "BATMAN", note: "Co-founders of the Justice League. Bats keeps a contingency plan for every member — including one to stop Barry." },
+        { who: "WONDER WOMAN", note: "League teammate; alongside Superman and Diana, Barry is the team's heart (and its comic timing)." },
+        { who: "REVERSE-FLASH", note: "Eobard Thawne — a speedster from the future who rebuilt his entire life around hating Barry." },
+      ],
+      feats: [
+        "Sacrificed himself to save the entire multiverse in Crisis on Infinite Earths.",
+        "In Flashpoint he ran back through time to save his mother — and accidentally rewrote all of reality.",
+        "Runs fast enough to time-travel, phase through walls, and land an 'infinite mass punch.'",
+      ],
+      trivia: [
+        "His Rogues — Captain Cold, Mirror Master, Heat Wave — actually follow a code of honor.",
+        "The Speed Force lets him think and heal at super-speed, not just run.",
+      ],
+    },
   },
   plastic: {
     name: "PLASTIC MAN",
     alias: "Eel O'Brian · malleable menace",
     stats: [["Speed", 44], ["Strength", 70], ["Durability", 100], ["Intellect", 64], ["Damage Taken", 4]],
     powers: ["Total Malleability", "Shapeshifting", "Near-Immortal", "Impact Absorb", "Regeneration"],
+    dossier: {
+      tagline: "The Malleable Menace · secretly a JLA heavy hitter",
+      origin:
+        "Small-time crook Eel O'Brian was shot and doused in mystery acid during a botched heist. Instead of dying, he became living rubber — and decided to go straight.",
+      clashes: [
+        { who: "BATMAN", note: "Batman trusts him on the Justice League — and rates him so dangerous his shutdown plan was to freeze Plas solid and shatter him." },
+        { who: "SUPERMAN", note: "Full League teammate beside the Man of Steel — the goofball who's quietly one of its most powerful members." },
+        { who: "WONDER WOMAN", note: "Serves on the JLA with Diana; writers joke he could end most fights if he ever took one seriously." },
+        { who: "WOOZY WINKS", note: "His bumbling sidekick, along for every ridiculous caper since the Golden Age." },
+      ],
+      feats: [
+        "Once blown to pieces and left frozen at the bottom of the ocean for 3,000 years — then simply reassembled and carried on.",
+        "Reshapes into anything: a parachute, a trampoline, a giant boxing glove, a perfect duplicate of a door.",
+        "Effectively unkillable — you can't damage what just bounces back into shape.",
+      ],
+      trivia: [
+        "Created by Jack Cole in 1941 — one of comics' very first shapeshifting heroes.",
+        "His son, Offspring, inherited the stretchy powers.",
+      ],
+    },
   },
 };
 
@@ -426,32 +503,49 @@ function Intro({ onStart }) {
 }
 
 function Cards({ onStart }) {
+  const [open, setOpen] = useState(null); // which fighter's dossier is open
   return (
     <div>
       <div style={{ textAlign: "center" }}>
         <div className="qs-kicker">Tale of the Tape</div>
         <h2 className="qs-h" style={{ fontSize: 26 }}>KNOW YOUR FIGHTERS</h2>
+        <p className="qs-sub" style={{ margin: "8px auto 0", textAlign: "center" }}>
+          Tap a fighter to open their dossier — origin, famous clashes, and iconic moments.
+        </p>
       </div>
       <div className="qs-cards">
-        <FighterCard which="flash" />
-        <FighterCard which="plastic" />
+        <FighterCard which="flash" onOpen={setOpen} />
+        <FighterCard which="plastic" onOpen={setOpen} />
       </div>
       <div className="qs-footer">
         <button className="qs-btn" onClick={onStart}>
           <Swords size={18} /> START THE SHOW <ChevronRight size={18} />
         </button>
       </div>
+      {open && <Dossier which={open} onClose={() => setOpen(null)} />}
     </div>
   );
 }
 
-function FighterCard({ which }) {
+function Emblem({ which, size = 36 }) {
+  return (
+    <div className={`qs-emblem ${which}`}>
+      {which === "flash" ? <Zap className="bolt" size={size} color="#0a0a12" fill="#0a0a12" /> : <div className="blob" />}
+    </div>
+  );
+}
+
+function FighterCard({ which, onOpen }) {
   const f = FIGHTERS[which];
   return (
-    <div className={`qs-card ${which}`}>
-      <div className={`qs-emblem ${which}`}>
-        {which === "flash" ? <Zap className="bolt" size={36} color="#0a0a12" fill="#0a0a12" /> : <div className="blob" />}
-      </div>
+    <div
+      className={`qs-card ${which}`}
+      role="button"
+      tabIndex={0}
+      onClick={() => onOpen(which)}
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen(which); } }}
+    >
+      <Emblem which={which} />
       <h3 className={`qs-name ${which}`}>{f.name}</h3>
       <div className="qs-alias">{f.alias}</div>
       {f.stats.map(([lab, val]) => (
@@ -462,6 +556,52 @@ function FighterCard({ which }) {
       ))}
       <div className="qs-powers">
         {f.powers.map((p) => <span className="qs-chip" key={p}>{p}</span>)}
+      </div>
+      <div className="qs-dossier-hint"><BookOpen size={13} /> TAP FOR DOSSIER <ChevronRight size={13} /></div>
+    </div>
+  );
+}
+
+function Dossier({ which, onClose }) {
+  const f = FIGHTERS[which];
+  const d = f.dossier;
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+  return (
+    <div className="qs-modal" onClick={onClose}>
+      <div className={`qs-dossier ${which}`} onClick={(e) => e.stopPropagation()} role="dialog" aria-label={`${f.name} dossier`}>
+        <button className="close" onClick={onClose} aria-label="Close dossier">✕</button>
+        <div className="dossier-head">
+          <Emblem which={which} size={32} />
+          <div>
+            <h3 className={`qs-name ${which}`} style={{ fontSize: 34 }}>{f.name}</h3>
+            <div className="qs-alias" style={{ margin: 0 }}>{d.tagline}</div>
+          </div>
+        </div>
+        <p className="dossier-origin">{d.origin}</p>
+
+        <div className="dossier-sec">
+          <div className="seclab">Famous Clashes &amp; Team-Ups</div>
+          {d.clashes.map((c) => (
+            <div className="clash-row" key={c.who}>
+              <span className="clash-who">{c.who}</span>
+              <span>{c.note}</span>
+            </div>
+          ))}
+        </div>
+
+        <div className="dossier-sec">
+          <div className="seclab">Iconic Feats</div>
+          <ul>{d.feats.map((x, i) => <li key={i}>{x}</li>)}</ul>
+        </div>
+
+        <div className="dossier-sec">
+          <div className="seclab">Did You Know</div>
+          <ul>{d.trivia.map((x, i) => <li key={i}>{x}</li>)}</ul>
+        </div>
       </div>
     </div>
   );

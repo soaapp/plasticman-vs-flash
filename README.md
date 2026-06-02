@@ -3,8 +3,9 @@
 Settle the eternal debate as a *show*. A Flash agent and a Plastic Man agent
 trash-talk and trade moves while a Quantum Referee agent calls each round — live
 on the OpenAI API, played out as animated comic-book panels: giant
-**POW / BOOM / SPROING** onomatopoeia, speech-bubble taunts, and a 10-second beat
-per round so the crowd can actually read the jokes.
+**POW / BOOM / SPROING** onomatopoeia, speech-bubble taunts, and a full minute
+per round so the crowd can savor the jokes. Paced for a ~10-minute presented
+slot, including time to explore the fighter dossiers.
 
 The running gag is the honest one — the Flash can't damage the indestructible,
 rubbery Plastic Man, and can never catch him either — so the bout leans toward a
@@ -32,13 +33,18 @@ Open **http://localhost:5173**.
 
 **Intro → Cards → The Show → Verdict.**
 
-Five paced rounds, one comic panel at a time. Each round:
+On the **Cards** screen, tap either fighter to open a comic-styled **dossier** —
+origin, famous clashes and team-ups (Superman, Batman, Wonder Woman,
+Reverse-Flash…), iconic feats, and trivia. Good fodder for the warm-up patter.
+
+Then **three paced rounds**, one comic panel at a time. Each round:
 
 1. A "clash" interstitial covers the generation latency.
 2. The panel **slams in** with an animated onomatopoeia — speed-words when the
    Flash edges it, bouncy-words when Plastic Man does — both taunts in comic
    speech bubbles, and the referee's play-by-play.
-3. A **10-second read window** holds (skippable) so the jokes land.
+3. A **one-minute read window** holds (skippable) so the jokes land and the host
+   can riff.
 
 The verdict is the referee's running scorecard, not a coin toss: a fighter must
 edge the bout by 2+ rounds to win outright, otherwise it's an **eternal
@@ -67,9 +73,12 @@ server/
 
 Knobs at the top of `src/App.jsx`:
 
-- `ROUNDS` — number of rounds (default `5`)
-- `READ_MS` — dwell time per round, ms (default `10000`)
+- `ROUNDS` — number of rounds (default `3`)
+- `READ_MS` — dwell time per round, ms (default `60000` — one minute)
 - `FX` — onomatopoeia word pools per edge
+
+Fighter dossier content (origin, clashes, feats, trivia) lives in the `FIGHTERS`
+object in the same file.
 
 Each round makes 3 OpenAI calls (two fighters + the referee), plus one closing
 call per show — so it costs a little API credit per run.
