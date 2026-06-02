@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Zap, Atom, Trophy, Repeat, ChevronRight, Loader2, Activity, Sparkles, Swords, Users, Timer } from "lucide-react";
-import { callAgent, parseJSON, collapseWavefunction } from "./api.js";
+import { callAgent, parseJSON, collapseWavefunction, fetchOdds } from "./api.js";
 import { usePoll } from "./usePoll.js";
 
 /* ------------------------------------------------------------------ *
@@ -202,19 +202,38 @@ export default function App() {
   const [outcome, setOutcome] = useState(null); // 'flash' | 'plastic' | 'stalemate'
   const [measurement, setMeasurement] = useState(null); // raw quantum result for display
   const [timeLeft, setTimeLeft] = useState(FIGHT_DURATION_MS); // ms remaining in the bout
+  const [liveOdds, setLiveOdds] = useState(null); // latest Aer odds sample
   const logRef = useRef(null);
   const poll = usePoll();
 
   const momentum = rounds.reduce((a, r) => a + (r.edge === "flash" ? 1 : r.edge === "plastic" ? -1 : 0), 0);
+  const momentumRef = useRef(0);
+  momentumRef.current = momentum; // keep the latest value for the polling interval
 
   useEffect(() => {
     if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
   }, [rounds]);
 
+  // While the bout runs, resample the live Aer odds every ~1.5s. The circuit is
+  // biased by current momentum, so the meter drifts toward whoever's leading.
+  useEffect(() => {
+    if (!fighting) return;
+    let alive = true;
+    const tick = () => {
+      fetchOdds(momentumRef.current)
+        .then((o) => { if (alive) setLiveOdds(o); })
+        .catch(() => {}); // keep the meter resilient to a dropped sample
+    };
+    tick();
+    const id = setInterval(tick, 1500);
+    return () => { alive = false; clearInterval(id); };
+  }, [fighting]);
+
   async function runFight() {
     setFighting(true);
     setError(null);
     setRounds([]);
+    setLiveOdds(null);
     const history = [];
     const deadline = Date.now() + FIGHT_DURATION_MS;
     setTimeLeft(FIGHT_DURATION_MS);
@@ -305,6 +324,7 @@ export default function App() {
             error={error}
             momentum={momentum}
             timeLeft={timeLeft}
+            liveOdds={liveOdds}
             logRef={logRef}
             onFight={runFight}
             onCollapse={() => setScene("quantum")}
@@ -424,7 +444,7 @@ function FighterCard({ which }) {
   );
 }
 
-function Arena({ rounds, fighting, error, momentum, timeLeft, logRef, onFight, onCollapse }) {
+function Arena({ rounds, fighting, error, momentum, timeLeft, liveOdds, logRef, onFight, onCollapse }) {
   const done = rounds.length > 0 && !fighting;
   const mPct = Math.max(-1, Math.min(1, momentum / Math.max(rounds.length, 1)));
   const secsLeft = Math.ceil((timeLeft || 0) / 1000);
@@ -469,6 +489,8 @@ function Arena({ rounds, fighting, error, momentum, timeLeft, logRef, onFight, o
         )}
       </div>
 
+      {liveOdds && <LiveOdds odds={liveOdds} sampling={fighting} />}
+
       {rounds.length > 0 && (
         <div className="qs-momentum">
           <span style={{ color: "var(--plastic)" }}>PLASTIC</span>
@@ -489,6 +511,36 @@ function Arena({ rounds, fighting, error, momentum, timeLeft, logRef, onFight, o
           <button className="qs-btn" onClick={onCollapse}><Atom size={18} /> COLLAPSE THE WAVEFUNCTION</button>
         </div>
       )}
+    </div>
+  );
+}
+
+function LiveOdds({ odds, sampling }) {
+  const flashPct = Math.round((odds.pFlash ?? 0.5) * 100);
+  const plasticPct = 100 - flashPct;
+  return (
+    <div style={{
+      marginTop: 18, padding: "12px 14px", borderRadius: 12,
+      border: "2px solid rgba(31,224,200,.25)", background: "rgba(31,224,200,.05)",
+    }}>
+      <div className="qs-pollmeta" style={{ marginTop: 0, marginBottom: 8 }}>
+        <span className={`qs-dot ${sampling ? "live" : ""}`} />
+        {sampling ? "LIVE" : "LAST SAMPLE"} · QUANTUM ODDS
+        <span style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 6 }}>
+          <Atom size={13} /> Aer · Ry(θ={odds.theta})→measure · {odds.shots} shots
+        </span>
+      </div>
+      <div style={{ display: "flex", justifyContent: "space-between", fontFamily: "'Space Mono',monospace", fontSize: 13, marginBottom: 6 }}>
+        <span style={{ color: "var(--plastic)" }}>PLASTIC {plasticPct}%</span>
+        <span style={{ color: "var(--flash)" }}>{flashPct}% FLASH</span>
+      </div>
+      {/* track is Plastic; the Flash fill grows from the right with measured P(flash) */}
+      <div style={{ height: 14, background: "var(--plastic)", borderRadius: 8, overflow: "hidden", position: "relative" }}>
+        <div style={{ position: "absolute", top: 0, right: 0, bottom: 0, width: `${flashPct}%`, background: "var(--flash)", transition: "width .5s ease" }} />
+      </div>
+      <div style={{ fontFamily: "'Space Mono',monospace", fontSize: 11, color: "var(--mute)", marginTop: 6 }}>
+        measured {odds.counts?.["0"]} flash / {odds.counts?.["1"]} plastic this sample · resamples on Aer every 1.5s
+      </div>
     </div>
   );
 }

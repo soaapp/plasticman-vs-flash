@@ -30,6 +30,21 @@ export async function collapseWavefunction({ momentum = 0 } = {}) {
   return res.json();
 }
 
+// Live odds sample: runs a momentum-biased Ry+measure circuit on Aer and
+// returns the measured distribution. Polled on an interval during the bout.
+export async function fetchOdds(momentum = 0) {
+  const res = await fetch("/api/quantum/odds", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ momentum }),
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    throw new Error(`Quantum odds ${res.status}: ${detail}`);
+  }
+  return res.json();
+}
+
 export function parseJSON(text, fallback) {
   try {
     const t = text.replace(/```json|```/g, "").trim();

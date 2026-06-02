@@ -10,22 +10,28 @@ qubit. Vite + React front end, Express back end.
 Browser (Vite/React, :5173)
    │  /api/*  ──proxy──▶  Express server (:3001)
    │                        ├─ POST /api/chat              → OpenAI API (key stays server-side)
-   │  /ws     ──proxy──▶    ├─ POST /api/quantum/collapse  → Qiskit Hadamard+measure on Aer (Python)
+   │                        ├─ POST /api/quantum/collapse  → Aer: H+measure (final coin-flip)
+   │  /ws     ──proxy──▶    ├─ POST /api/quantum/odds       → Aer: Ry(θ)+measure (live odds)
    │                        └─ WS   /ws                    → live room poll (shared tally)
 ```
 
-The back end does three things:
+A single persistent Qiskit worker ([`server/quantum/worker.py`](server/quantum/worker.py))
+serves both circuits — it imports Qiskit once and answers requests over
+stdin/stdout, so the live-odds meter can resample cheaply. The back end does:
 
 1. **OpenAI proxy** (`POST /api/chat`) — the browser sends `{system, user}`;
    the server attaches the API key + model and forwards to OpenAI Chat
    Completions. The key never reaches the client.
-2. **Quantum collapse** (`POST /api/quantum/collapse`) — spawns
-   [`server/quantum/collapse.py`](server/quantum/collapse.py), which builds a
-   single-qubit `H → measure` circuit and runs it on the Qiskit **Aer**
-   simulator. The first shot decides the bout; full shot counts are returned for
-   display. (A small configurable chance overrides with the canonical comic-book
-   *eternal stalemate*.)
-3. **Live poll** (`WS /ws`) — every connected screen votes into one shared tally;
+2. **Quantum collapse** (`POST /api/quantum/collapse`) — a single-qubit
+   `H → measure` circuit on the Qiskit **Aer** simulator. The first shot decides
+   the bout; full shot counts are returned for display. (A small configurable
+   chance overrides with the canonical comic-book *eternal stalemate*.)
+3. **Live Aer odds** (`POST /api/quantum/odds`) — an `Ry(θ) → measure` circuit
+   whose θ is biased by the fight's current momentum, sampled over 1024 shots.
+   The UI polls it every ~1.5s during the bout so the odds meter drifts live
+   toward whoever's leading. (This is the *biased* sibling of the pure-Hadamard
+   collapse — see the note in `worker.py`.)
+4. **Live poll** (`WS /ws`) — every connected screen votes into one shared tally;
    the server broadcasts the standings to the whole room on each change.
 
 ## Setup
@@ -58,5 +64,5 @@ Run pieces individually with `npm run dev:web` / `npm run dev:api`.
 
 ## Production note
 
-Swap the Aer simulator in `collapse.py` for a real hardware backend via
+Swap the Aer simulator in `worker.py` for a real hardware backend via
 `QiskitRuntimeService` to decide the fight on actual quantum hardware.

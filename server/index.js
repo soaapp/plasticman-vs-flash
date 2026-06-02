@@ -1,4 +1,3 @@
-import { spawn } from "node:child_process";
 import { createServer } from "node:http";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
@@ -7,6 +6,8 @@ import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import { WebSocketServer } from "ws";
+
+import { QuantumWorker } from "./quantumWorker.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -78,35 +79,16 @@ app.post("/api/chat", async (req, res) => {
   }
 });
 
-/* ------------------ 2. Quantum collapse (Qiskit/Aer) -------------- *
- * Spawns the Python script that runs a Hadamard-and-measure circuit on the
- * Aer simulator, maps the measured bit to a winner, and (for the running
- * comic-book gag) occasionally overrides with an eternal stalemate.         */
-function runQuantumCircuit(shots = 1024) {
-  return new Promise((resolve, reject) => {
-    const script = path.join(__dirname, "quantum", "collapse.py");
-    const proc = spawn(QISKIT_PYTHON, [script, String(shots)]);
-    let out = "";
-    let err = "";
-    proc.stdout.on("data", (d) => (out += d));
-    proc.stderr.on("data", (d) => (err += d));
-    proc.on("error", (e) => reject(new Error(`Cannot launch Qiskit (${QISKIT_PYTHON}): ${e.message}`)));
-    proc.on("close", (code) => {
-      let parsed;
-      try {
-        parsed = JSON.parse(out.trim().split("\n").pop());
-      } catch {
-        return reject(new Error(`Bad output from circuit (exit ${code}): ${err || out}`));
-      }
-      if (code !== 0 || parsed.error) return reject(new Error(parsed.error || err || "circuit failed"));
-      resolve(parsed);
-    });
-  });
-}
+/* ------------------ 2. Quantum circuits (Qiskit/Aer) -------------- *
+ * A single persistent Python worker runs both circuits on the Aer simulator:
+ *   /collapse  the final 50/50 Hadamard coin-flip that decides the winner
+ *   /odds      a momentum-biased Ry(theta) sampled live for the odds meter
+ * Keeping one warm process makes the live meter's frequent polls cheap.      */
+const quantum = new QuantumWorker(QISKIT_PYTHON);
 
 app.post("/api/quantum/collapse", async (req, res) => {
   try {
-    const result = await runQuantumCircuit(1024);
+    const result = await quantum.collapse(1024);
     // bit 0 -> flash, bit 1 -> plastic
     let outcome = result.bit === 0 ? "flash" : "plastic";
     if (STALEMATE_PROBABILITY > 0 && Math.random() < STALEMATE_PROBABILITY) {
@@ -115,6 +97,19 @@ app.post("/api/quantum/collapse", async (req, res) => {
     res.json({ outcome, ...result });
   } catch (err) {
     console.error("Quantum collapse failed:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Live odds: real Aer sampling of a momentum-biased qubit. Polled by the UI
+// every ~1.5s during the bout to show who the quantum sim currently favors.
+app.post("/api/quantum/odds", async (req, res) => {
+  const momentum = Number(req.body?.momentum) || 0;
+  try {
+    const result = await quantum.odds(momentum, 1024);
+    res.json(result);
+  } catch (err) {
+    console.error("Quantum odds failed:", err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -171,8 +166,11 @@ httpServer.listen(PORT, () => {
   console.log(`⚡🫳  Showdown backend on http://localhost:${PORT}`);
   console.log(`     OpenAI proxy:     POST /api/chat  (model ${OPENAI_MODEL})`);
   console.log(`     Quantum collapse: POST /api/quantum/collapse`);
+  console.log(`     Live Aer odds:    POST /api/quantum/odds`);
   console.log(`     Live poll:        ws://localhost:${PORT}/ws`);
   if (!OPENAI_API_KEY || OPENAI_API_KEY.includes("REPLACE_ME")) {
     console.warn("     ⚠  OPENAI_API_KEY not set — the OpenAI proxy will return 500 until you add it to .env");
   }
+  // Warm the Qiskit worker now so the first live-odds poll isn't slow.
+  quantum.start();
 });
