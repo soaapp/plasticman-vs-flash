@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Zap, Atom, Trophy, Repeat, ChevronRight, Loader2, Activity, Sparkles, Swords, Users, Timer } from "lucide-react";
-import { callAgent, parseJSON, collapseWavefunction, fetchOdds } from "./api.js";
+import { callAgent, parseJSON, collapseWavefunction, sampleSuperposition } from "./api.js";
 import { usePoll } from "./usePoll.js";
 
 /* ------------------------------------------------------------------ *
@@ -202,38 +202,38 @@ export default function App() {
   const [outcome, setOutcome] = useState(null); // 'flash' | 'plastic' | 'stalemate'
   const [measurement, setMeasurement] = useState(null); // raw quantum result for display
   const [timeLeft, setTimeLeft] = useState(FIGHT_DURATION_MS); // ms remaining in the bout
-  const [liveOdds, setLiveOdds] = useState(null); // latest Aer odds sample
+  const [qSample, setQSample] = useState(null); // latest live Aer superposition sample
   const logRef = useRef(null);
   const poll = usePoll();
 
+  // Referee's scorecard (LLM judge), NOT the quantum outcome — purely the fight.
   const momentum = rounds.reduce((a, r) => a + (r.edge === "flash" ? 1 : r.edge === "plastic" ? -1 : 0), 0);
-  const momentumRef = useRef(0);
-  momentumRef.current = momentum; // keep the latest value for the polling interval
 
   useEffect(() => {
     if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
   }, [rounds]);
 
-  // While the bout runs, resample the live Aer odds every ~1.5s. The circuit is
-  // biased by current momentum, so the meter drifts toward whoever's leading.
+  // While the qubit is unobserved — during the bout, and on the quantum screen
+  // before you measure — resample the honest Hadamard every ~1.5s. It stays at
+  // ~50/50 no matter how the fight is going; the jitter is real shot noise.
   useEffect(() => {
-    if (!fighting) return;
+    const active = fighting || (scene === "quantum" && !collapsing);
+    if (!active) return;
     let alive = true;
     const tick = () => {
-      fetchOdds(momentumRef.current)
-        .then((o) => { if (alive) setLiveOdds(o); })
+      sampleSuperposition()
+        .then((s) => { if (alive) setQSample(s); })
         .catch(() => {}); // keep the meter resilient to a dropped sample
     };
     tick();
     const id = setInterval(tick, 1500);
     return () => { alive = false; clearInterval(id); };
-  }, [fighting]);
+  }, [fighting, scene, collapsing]);
 
   async function runFight() {
     setFighting(true);
     setError(null);
     setRounds([]);
-    setLiveOdds(null);
     const history = [];
     const deadline = Date.now() + FIGHT_DURATION_MS;
     setTimeLeft(FIGHT_DURATION_MS);
@@ -284,7 +284,7 @@ export default function App() {
     setCollapsing(true);
     setError(null);
     try {
-      const res = await collapseWavefunction({ momentum });
+      const res = await collapseWavefunction();
       // brief dramatic pause so the collapse animation reads
       setTimeout(() => {
         setMeasurement(res);
@@ -324,7 +324,7 @@ export default function App() {
             error={error}
             momentum={momentum}
             timeLeft={timeLeft}
-            liveOdds={liveOdds}
+            qSample={qSample}
             logRef={logRef}
             onFight={runFight}
             onCollapse={() => setScene("quantum")}
@@ -332,7 +332,7 @@ export default function App() {
         )}
 
         {scene === "quantum" && (
-          <Quantum collapsing={collapsing} momentum={momentum} error={error} onMeasure={collapse} />
+          <Quantum collapsing={collapsing} qSample={qSample} error={error} onMeasure={collapse} />
         )}
 
         {scene === "result" && (
@@ -444,7 +444,7 @@ function FighterCard({ which }) {
   );
 }
 
-function Arena({ rounds, fighting, error, momentum, timeLeft, liveOdds, logRef, onFight, onCollapse }) {
+function Arena({ rounds, fighting, error, momentum, timeLeft, qSample, logRef, onFight, onCollapse }) {
   const done = rounds.length > 0 && !fighting;
   const mPct = Math.max(-1, Math.min(1, momentum / Math.max(rounds.length, 1)));
   const secsLeft = Math.ceil((timeLeft || 0) / 1000);
@@ -489,20 +489,26 @@ function Arena({ rounds, fighting, error, momentum, timeLeft, liveOdds, logRef, 
         )}
       </div>
 
-      {liveOdds && <LiveOdds odds={liveOdds} sampling={fighting} />}
+      {qSample && <LiveSuperposition sample={qSample} sampling={fighting} />}
 
       {rounds.length > 0 && (
-        <div className="qs-momentum">
-          <span style={{ color: "var(--plastic)" }}>PLASTIC</span>
-          <div className="track">
-            <div className="fill" style={{
-              background: mPct >= 0 ? "var(--flash)" : "var(--plastic)",
-              left: mPct >= 0 ? "50%" : `${50 + mPct * 50}%`,
-              width: `${Math.abs(mPct) * 50}%`,
-            }} />
+        <>
+          <div className="qs-kicker" style={{ marginTop: 16 }}>Referee's Scorecard · LLM judge, not quantum</div>
+          <div className="qs-momentum" style={{ marginTop: 6 }}>
+            <span style={{ color: "var(--plastic)" }}>PLASTIC</span>
+            <div className="track">
+              <div className="fill" style={{
+                background: mPct >= 0 ? "var(--flash)" : "var(--plastic)",
+                left: mPct >= 0 ? "50%" : `${50 + mPct * 50}%`,
+                width: `${Math.abs(mPct) * 50}%`,
+              }} />
+            </div>
+            <span style={{ color: "var(--flash)" }}>FLASH</span>
           </div>
-          <span style={{ color: "var(--flash)" }}>FLASH</span>
-        </div>
+          <div className="qs-edge" style={{ textAlign: "center" }}>
+            Who's landing the better rounds — the verdict still comes down to the qubit.
+          </div>
+        </>
       )}
 
       {done && (
@@ -515,8 +521,8 @@ function Arena({ rounds, fighting, error, momentum, timeLeft, liveOdds, logRef, 
   );
 }
 
-function LiveOdds({ odds, sampling }) {
-  const flashPct = Math.round((odds.pFlash ?? 0.5) * 100);
+function LiveSuperposition({ sample, sampling }) {
+  const flashPct = Math.round((sample.pFlash ?? 0.5) * 100);
   const plasticPct = 100 - flashPct;
   return (
     <div style={{
@@ -525,9 +531,9 @@ function LiveOdds({ odds, sampling }) {
     }}>
       <div className="qs-pollmeta" style={{ marginTop: 0, marginBottom: 8 }}>
         <span className={`qs-dot ${sampling ? "live" : ""}`} />
-        {sampling ? "LIVE" : "LAST SAMPLE"} · QUANTUM ODDS
+        {sampling ? "LIVE" : "LAST SAMPLE"} · OUTCOME IN SUPERPOSITION
         <span style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 6 }}>
-          <Atom size={13} /> Aer · Ry(θ={odds.theta})→measure · {odds.shots} shots
+          <Atom size={13} /> Aer · H→measure · {sample.shots} shots
         </span>
       </div>
       <div style={{ display: "flex", justifyContent: "space-between", fontFamily: "'Space Mono',monospace", fontSize: 13, marginBottom: 6 }}>
@@ -539,22 +545,24 @@ function LiveOdds({ odds, sampling }) {
         <div style={{ position: "absolute", top: 0, right: 0, bottom: 0, width: `${flashPct}%`, background: "var(--flash)", transition: "width .5s ease" }} />
       </div>
       <div style={{ fontFamily: "'Space Mono',monospace", fontSize: 11, color: "var(--mute)", marginTop: 6 }}>
-        measured {odds.counts?.["0"]} flash / {odds.counts?.["1"]} plastic this sample · resamples on Aer every 1.5s
+        measured {sample.counts?.["0"]} / {sample.counts?.["1"]} (flash/plastic) · stays ~50/50 no matter who's winning — both win until observed. Jitter is real shot noise; resamples on Aer every 1.5s.
       </div>
     </div>
   );
 }
 
-function Quantum({ collapsing, momentum, error, onMeasure }) {
-  // Display-only superposition bars; the true outcome comes from the Aer circuit.
-  const pFlash = 0.5 + Math.max(-0.18, Math.min(0.18, momentum * 0.05));
+function Quantum({ collapsing, qSample, error, onMeasure }) {
+  // Real, live Aer sample of the honest Hadamard — sits at ~50/50 with shot
+  // noise. This is the SAME circuit the final measurement collapses.
+  const pFlash = collapsing ? 0.5 : (qSample?.pFlash ?? 0.5);
   return (
     <div className={`qs-quantum ${collapsing ? "qs-collapsing" : ""}`}>
       <div className="qs-kicker">Schrödinger's Showdown</div>
       <h2 className="qs-title" style={{ fontSize: 24 }}>BOTH WIN — UNTIL OBSERVED</h2>
       <p className="qs-sub" style={{ margin: "8px auto 0" }}>
-        The outcome lives in superposition. A Hadamard gate puts the result into an equal blend of
-        both fighters; measuring the qubit collapses it to a single winner.
+        This debate never resolves — so the outcome lives in honest superposition. A Hadamard gate
+        holds an equal blend of both fighters; measuring the qubit collapses it to a single winner.
+        The brawl was pure theater: it doesn't tip these odds.
       </p>
 
       <div className="qs-qubit">
@@ -578,6 +586,12 @@ function Quantum({ collapsing, momentum, error, onMeasure }) {
         </div>
       </div>
 
+      {qSample && !collapsing && (
+        <div className="qs-edge">
+          live Aer sample · {qSample.counts?.["0"]} / {qSample.counts?.["1"]} over {qSample.shots} shots · resampling every 1.5s
+        </div>
+      )}
+
       {error && <div className="qs-err">{error}</div>}
 
       <div className="qs-footer">
@@ -587,9 +601,10 @@ function Quantum({ collapsing, momentum, error, onMeasure }) {
       </div>
 
       <div className="qs-note">
-        REAL MEASUREMENT. This calls the backend's <code>/api/quantum/collapse</code> endpoint, which
-        builds a single-qubit Hadamard-and-measure circuit and runs it on the Qiskit Aer simulator.
-        Swap the Aer backend for real quantum hardware in prod to decide it on an actual QPU.
+        REAL MEASUREMENT. The bars above are a live Aer sample of <code>H→measure</code>; pressing the
+        button calls <code>/api/quantum/collapse</code>, which runs that same single-qubit circuit and
+        takes one shot as the verdict — a genuine 50/50 (plus the comic-book stalemate chance), wholly
+        independent of the fight. Swap the Aer backend for real quantum hardware to decide it on a QPU.
       </div>
     </div>
   );

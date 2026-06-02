@@ -68,7 +68,8 @@ export class QuantumWorker {
     return this.request({ op: "collapse", shots });
   }
 
-  odds(momentum = 0, shots = 1024) {
-    return this.request({ op: "odds", momentum, shots });
+  // Honest ~50/50 Hadamard sample for the live superposition readout.
+  sample(shots = 1024) {
+    return this.request({ op: "sample", shots });
   }
 }

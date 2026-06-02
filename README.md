@@ -11,26 +11,28 @@ Browser (Vite/React, :5173)
    │  /api/*  ──proxy──▶  Express server (:3001)
    │                        ├─ POST /api/chat              → OpenAI API (key stays server-side)
    │                        ├─ POST /api/quantum/collapse  → Aer: H+measure (final coin-flip)
-   │  /ws     ──proxy──▶    ├─ POST /api/quantum/odds       → Aer: Ry(θ)+measure (live odds)
+   │  /ws     ──proxy──▶    ├─ POST /api/quantum/sample     → Aer: H+measure (live ~50/50 readout)
    │                        └─ WS   /ws                    → live room poll (shared tally)
 ```
 
 A single persistent Qiskit worker ([`server/quantum/worker.py`](server/quantum/worker.py))
 serves both circuits — it imports Qiskit once and answers requests over
-stdin/stdout, so the live-odds meter can resample cheaply. The back end does:
+stdin/stdout, so the live readout can resample cheaply. The back end does:
 
 1. **OpenAI proxy** (`POST /api/chat`) — the browser sends `{system, user}`;
    the server attaches the API key + model and forwards to OpenAI Chat
    Completions. The key never reaches the client.
 2. **Quantum collapse** (`POST /api/quantum/collapse`) — a single-qubit
    `H → measure` circuit on the Qiskit **Aer** simulator. The first shot decides
-   the bout; full shot counts are returned for display. (A small configurable
-   chance overrides with the canonical comic-book *eternal stalemate*.)
-3. **Live Aer odds** (`POST /api/quantum/odds`) — an `Ry(θ) → measure` circuit
-   whose θ is biased by the fight's current momentum, sampled over 1024 shots.
-   The UI polls it every ~1.5s during the bout so the odds meter drifts live
-   toward whoever's leading. (This is the *biased* sibling of the pure-Hadamard
-   collapse — see the note in `worker.py`.)
+   the bout: a genuine 50/50 (plus the canonical comic-book *eternal stalemate*
+   chance), **wholly independent of the fight**.
+3. **Live superposition readout** (`POST /api/quantum/sample`) — the *same*
+   honest Hadamard, sampled over 1024 shots. The UI polls it every ~1.5s while
+   the qubit is unobserved so you can watch the distribution sit at ~50/50 and
+   jitter from real shot noise. It does **not** lean toward whoever's winning —
+   that's the whole point: Flash vs Plastic Man is unresolvable, so the qubit
+   stays an honest coin. (The round-by-round momentum shown in the UI is the
+   LLM referee's scorecard — narrative only, not quantum.)
 4. **Live poll** (`WS /ws`) — every connected screen votes into one shared tally;
    the server broadcasts the standings to the whole room on each change.
 

@@ -82,7 +82,8 @@ app.post("/api/chat", async (req, res) => {
 /* ------------------ 2. Quantum circuits (Qiskit/Aer) -------------- *
  * A single persistent Python worker runs both circuits on the Aer simulator:
  *   /collapse  the final 50/50 Hadamard coin-flip that decides the winner
- *   /odds      a momentum-biased Ry(theta) sampled live for the odds meter
+ *   /sample    the same honest Hadamard, sampled live for the superposition
+ *              readout (stays ~50/50 — the fight never tilts the qubit)
  * Keeping one warm process makes the live meter's frequent polls cheap.      */
 const quantum = new QuantumWorker(QISKIT_PYTHON);
 
@@ -101,15 +102,14 @@ app.post("/api/quantum/collapse", async (req, res) => {
   }
 });
 
-// Live odds: real Aer sampling of a momentum-biased qubit. Polled by the UI
-// every ~1.5s during the bout to show who the quantum sim currently favors.
-app.post("/api/quantum/odds", async (req, res) => {
-  const momentum = Number(req.body?.momentum) || 0;
+// Live superposition readout: a real Aer sample of the honest Hadamard,
+// polled by the UI every ~1.5s to show the outcome sitting at ~50/50.
+app.post("/api/quantum/sample", async (_req, res) => {
   try {
-    const result = await quantum.odds(momentum, 1024);
+    const result = await quantum.sample(1024);
     res.json(result);
   } catch (err) {
-    console.error("Quantum odds failed:", err);
+    console.error("Quantum sample failed:", err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -166,7 +166,7 @@ httpServer.listen(PORT, () => {
   console.log(`⚡🫳  Showdown backend on http://localhost:${PORT}`);
   console.log(`     OpenAI proxy:     POST /api/chat  (model ${OPENAI_MODEL})`);
   console.log(`     Quantum collapse: POST /api/quantum/collapse`);
-  console.log(`     Live Aer odds:    POST /api/quantum/odds`);
+  console.log(`     Live Aer sample:  POST /api/quantum/sample`);
   console.log(`     Live poll:        ws://localhost:${PORT}/ws`);
   if (!OPENAI_API_KEY || OPENAI_API_KEY.includes("REPLACE_ME")) {
     console.warn("     ⚠  OPENAI_API_KEY not set — the OpenAI proxy will return 500 until you add it to .env");

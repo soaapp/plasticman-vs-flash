@@ -15,13 +15,13 @@ export async function callAgent(system, user) {
   return data.text || "";
 }
 
-// Run the real Qiskit Hadamard-and-measure circuit on the Aer simulator.
-// Returns { outcome, bit, counts, shots, backend } — see server/quantum/collapse.py.
-export async function collapseWavefunction({ momentum = 0 } = {}) {
+// Run the real Qiskit Hadamard-and-measure circuit on the Aer simulator — the
+// final, honest 50/50 coin-flip that decides the bout (the fight never tilts it).
+// Returns { outcome, bit, counts, shots, backend } — see server/quantum/worker.py.
+export async function collapseWavefunction() {
   const res = await fetch("/api/quantum/collapse", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ momentum }),
   });
   if (!res.ok) {
     const detail = await res.text().catch(() => "");
@@ -30,17 +30,17 @@ export async function collapseWavefunction({ momentum = 0 } = {}) {
   return res.json();
 }
 
-// Live odds sample: runs a momentum-biased Ry+measure circuit on Aer and
-// returns the measured distribution. Polled on an interval during the bout.
-export async function fetchOdds(momentum = 0) {
-  const res = await fetch("/api/quantum/odds", {
+// Live superposition readout: samples the honest Hadamard on Aer and returns
+// the measured distribution (~50/50). Polled on an interval while the qubit
+// is still unobserved — it never leans toward whoever's winning the fight.
+export async function sampleSuperposition() {
+  const res = await fetch("/api/quantum/sample", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ momentum }),
   });
   if (!res.ok) {
     const detail = await res.text().catch(() => "");
-    throw new Error(`Quantum odds ${res.status}: ${detail}`);
+    throw new Error(`Quantum sample ${res.status}: ${detail}`);
   }
   return res.json();
 }

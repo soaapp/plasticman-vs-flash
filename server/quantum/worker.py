@@ -7,31 +7,25 @@ requests forever: it reads one JSON request per line on stdin and writes one
 JSON response per line on stdout (line-buffered). The Node server owns the
 process and matches responses to requests in FIFO order.
 
-Two circuits, both on the Aer simulator:
+Two circuits, both on the Aer simulator. BOTH are a genuine, unbiased
+Hadamard superposition — the fight never tilts the qubit. That's the point:
+Flash vs Plastic Man is unresolvable, so the universe stays an honest coin.
 
-  op="collapse"  ->  the final coin-flip. A genuine 50/50 Hadamard:
+  op="collapse"  ->  the final coin-flip. One observation decides the bout:
                        |0> --[ H ]--[ measure ]-->  bit (0=flash, 1=plastic)
 
-  op="odds"      ->  the LIVE odds meter. A single-qubit Ry(theta) rotation
-                     biased by the fight's momentum, sampled over many shots:
-                       |0> --[ Ry(theta) ]--[ measure ]
-                     P(measure=0) = cos^2(theta/2). We pick theta so the
-                     expected P(flash) tracks who's currently in the lead, then
-                     report the *measured* shot counts (which jitter shot-to-
-                     shot — that's the real quantum sampling noise on display).
+  op="sample"    ->  the LIVE superposition readout. The same H circuit run
+                     over many shots to show the distribution sitting at ~50/50,
+                     jittering shot-to-shot from real quantum sampling noise.
+                     It does NOT lean toward whoever's winning the brawl.
 """
 import json
-import math
 import sys
 
 from qiskit import QuantumCircuit, transpile
 from qiskit_aer import AerSimulator
 
 SIM = AerSimulator()
-
-# How hard momentum tilts the odds, and the clamp so it never hits 0%/100%.
-MOMENTUM_GAIN = 0.05
-MAX_TILT = 0.35
 
 
 def collapse(shots: int = 1024) -> dict:
@@ -50,13 +44,9 @@ def collapse(shots: int = 1024) -> dict:
     }
 
 
-def odds(momentum: float = 0.0, shots: int = 1024) -> dict:
-    tilt = max(-MAX_TILT, min(MAX_TILT, momentum * MOMENTUM_GAIN))
-    p_flash_target = 0.5 + tilt  # desired P(flash) == P(measure=0)
-    theta = 2 * math.acos(math.sqrt(p_flash_target))  # Ry: P(0)=cos^2(theta/2)
-
-    qc = QuantumCircuit(1, 1, name="odds")
-    qc.ry(theta, 0)
+def sample(shots: int = 1024) -> dict:
+    qc = QuantumCircuit(1, 1, name="sample")
+    qc.h(0)               # honest superposition — no bias from the fight
     qc.measure(0, 0)
     counts = SIM.run(transpile(qc, SIM), shots=shots).result().get_counts()
 
@@ -64,14 +54,11 @@ def odds(momentum: float = 0.0, shots: int = 1024) -> dict:
     n_plastic = int(counts.get("1", 0))  # bit 1 -> plastic
     measured = n_flash / shots if shots else 0.5
     return {
-        "pFlash": measured,                 # measured P(flash) this sample
-        "pFlashTarget": round(p_flash_target, 4),
+        "pFlash": measured,                 # measured P(flash) this sample (~0.5)
         "counts": {"0": n_flash, "1": n_plastic},
         "shots": shots,
-        "theta": round(theta, 4),
-        "momentum": momentum,
         "backend": "aer_simulator",
-        "circuit": "q[0]: Ry(theta) -> measure",
+        "circuit": "q[0]: H -> measure",
     }
 
 
@@ -80,8 +67,8 @@ def handle(req: dict) -> dict:
     shots = int(req.get("shots", 1024))
     if op == "collapse":
         return collapse(shots)
-    if op == "odds":
-        return odds(float(req.get("momentum", 0)), shots)
+    if op == "sample":
+        return sample(shots)
     return {"error": f"unknown op: {op!r}"}
 
 
