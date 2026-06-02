@@ -12,7 +12,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const PORT = process.env.PORT || 3001;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-const OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-4o-mini";
+const OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-5-mini";
 const QISKIT_PYTHON = process.env.QISKIT_PYTHON
   ? path.resolve(process.cwd(), process.env.QISKIT_PYTHON)
   : path.join(__dirname, "quantum", ".venv", "bin", "python");
@@ -41,17 +41,28 @@ app.post("/api/chat", async (req, res) => {
     if (system) messages.push({ role: "system", content: system });
     messages.push({ role: "user", content: user });
 
+    const chosenModel = model || OPENAI_MODEL;
+    const payload = {
+      model: chosenModel,
+      messages,
+      // GPT-5 / o-series require max_completion_tokens; it also works on 4o.
+      // Reasoning models spend some of this budget on hidden reasoning tokens,
+      // so leave headroom above the short JSON replies we actually want back.
+      max_completion_tokens: max_tokens || 2000,
+    };
+    // GPT-5 supports a reasoning_effort knob; "minimal" keeps the demo snappy
+    // for these simple "pick a move / narrate" formatting tasks.
+    if (/^gpt-5/.test(chosenModel)) {
+      payload.reasoning_effort = "minimal";
+    }
+
     const upstream = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${OPENAI_API_KEY}`,
       },
-      body: JSON.stringify({
-        model: model || OPENAI_MODEL,
-        max_tokens: max_tokens || 1000,
-        messages,
-      }),
+      body: JSON.stringify(payload),
     });
 
     const data = await upstream.json();

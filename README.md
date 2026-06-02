@@ -41,7 +41,7 @@ cp .env.example .env     # then edit .env and add your key
 | var | purpose |
 | --- | --- |
 | `OPENAI_API_KEY` | key for the server-side OpenAI proxy |
-| `OPENAI_MODEL` | model the agents use (default `gpt-4o-mini`) |
+| `OPENAI_MODEL` | model the agents use (default `gpt-5-mini`; `gpt-5-nano` is lighter) |
 | `PORT` | back-end HTTP/WebSocket port (default `3001`) |
 | `QISKIT_PYTHON` | Python interpreter for the circuit (default: the bundled venv) |
 
