@@ -10,11 +10,6 @@ node_modules/
 dist/
 dist-ssr/
 
-# python / qiskit venv
-server/quantum/.venv/
-__pycache__/
-*.pyc
-
 # editor / tooling
 .claude/
 
