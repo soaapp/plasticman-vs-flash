@@ -1,47 +1,43 @@
-# Plastic Man vs The Flash — Schrödinger's Showdown
+# Plastic Man vs The Flash — a comic-book agent showdown
 
-A hackathon toy: two AI agents (the Flash and Plastic Man) fight under a Quantum
-Referee, the room votes live, and the winner is decided by collapsing a real
-qubit. Vite + React front end, Express back end.
+Settle the eternal debate as a *show*. A Flash agent and a Plastic Man agent
+trash-talk and trade moves while a Quantum Referee agent calls each round — live
+on the OpenAI API, played out as animated comic-book panels with giant
+POW/BOOM/SPROING onomatopoeia, speech-bubble taunts, and a 10-second beat per
+round so the crowd can actually read the jokes.
+
+The running gag is the honest one: the Flash can't damage the indestructible,
+rubbery Plastic Man, and can never catch him either — so the bout tends toward a
+glorious stalemate.
 
 ## Architecture
 
 ```
 Browser (Vite/React, :5173)
    │  /api/*  ──proxy──▶  Express server (:3001)
-   │                        ├─ POST /api/chat              → OpenAI API (key stays server-side)
-   │                        ├─ POST /api/quantum/collapse  → Aer: H+measure (final coin-flip)
-   │  /ws     ──proxy──▶    ├─ POST /api/quantum/sample     → Aer: H+measure (live ~50/50 readout)
-   │                        └─ WS   /ws                    → live room poll (shared tally)
+   │                        └─ POST /api/chat  → OpenAI API (key stays server-side)
 ```
 
-A single persistent Qiskit worker ([`server/quantum/worker.py`](server/quantum/worker.py))
-serves both circuits — it imports Qiskit once and answers requests over
-stdin/stdout, so the live readout can resample cheaply. The back end does:
+Deliberately lightweight: a Vite + React front end and a thin Express proxy.
+The only thing the server does is attach the API key + model and forward chat
+requests to OpenAI, so the key never reaches the browser.
 
-1. **OpenAI proxy** (`POST /api/chat`) — the browser sends `{system, user}`;
-   the server attaches the API key + model and forwards to OpenAI Chat
-   Completions. The key never reaches the client.
-2. **Quantum collapse** (`POST /api/quantum/collapse`) — a single-qubit
-   `H → measure` circuit on the Qiskit **Aer** simulator. The first shot decides
-   the bout: a genuine 50/50 (plus the canonical comic-book *eternal stalemate*
-   chance), **wholly independent of the fight**.
-3. **Live superposition readout** (`POST /api/quantum/sample`) — the *same*
-   honest Hadamard, sampled over 1024 shots. The UI polls it every ~1.5s while
-   the qubit is unobserved so you can watch the distribution sit at ~50/50 and
-   jitter from real shot noise. It does **not** lean toward whoever's winning —
-   that's the whole point: Flash vs Plastic Man is unresolvable, so the qubit
-   stays an honest coin. (The round-by-round momentum shown in the UI is the
-   LLM referee's scorecard — narrative only, not quantum.)
-4. **Live poll** (`WS /ws`) — every connected screen votes into one shared tally;
-   the server broadcasts the standings to the whole room on each change.
+### The show
+- **Intro → Cards → The Show → Verdict.**
+- 5 paced rounds. Each round: a "clash" interstitial covers the generation
+  latency, then the panel **slams in** with an animated onomatopoeia (speed-words
+  when the Flash edges it, bouncy-words when Plastic Man does), the two taunts in
+  comic speech bubbles, and the referee's play-by-play — then a **10-second read
+  window** with a skip control.
+- The verdict comes from the referee's running scorecard (no randomness): a
+  fighter needs to edge the bout by 2+ rounds to win outright, otherwise it's an
+  **eternal stalemate**.
 
 ## Setup
 
 ```bash
 npm install
-npm run setup:quantum   # creates server/quantum/.venv and installs qiskit + qiskit-aer (needs python3.11)
-cp .env.example .env     # then edit .env and add your key
+cp .env.example .env   # then edit .env and add your OpenAI key
 ```
 
 ### Environment (`.env`, gitignored)
@@ -50,21 +46,25 @@ cp .env.example .env     # then edit .env and add your key
 | --- | --- |
 | `OPENAI_API_KEY` | key for the server-side OpenAI proxy |
 | `OPENAI_MODEL` | model the agents use (default `gpt-5-mini`; `gpt-5-nano` is lighter) |
-| `PORT` | back-end HTTP/WebSocket port (default `3001`) |
-| `QISKIT_PYTHON` | Python interpreter for the circuit (default: the bundled venv) |
+| `PORT` | back-end port (default `3001`) |
 
 ## Run
 
 ```bash
-npm run dev      # starts Vite (:5173) and the Express server (:3001) together
+npm run dev   # starts Vite (:5173) and the Express proxy (:3001) together
 ```
 
-Open http://localhost:5173. Open it in a second tab/device to watch the poll
-update live.
+Open **http://localhost:5173**.
 
 Run pieces individually with `npm run dev:web` / `npm run dev:api`.
 
-## Production note
+## Tuning the show
 
-Swap the Aer simulator in `worker.py` for a real hardware backend via
-`QiskitRuntimeService` to decide the fight on actual quantum hardware.
+All in `src/App.jsx`:
+
+- `ROUNDS` — number of rounds (default 5).
+- `READ_MS` — dwell time per round in ms (default 10000).
+- `FX` — the onomatopoeia word pools per edge.
+
+A full show is `ROUNDS × 3` OpenAI calls (two fighters + a referee per round)
+plus one closing call, so it costs a little API credit each run.

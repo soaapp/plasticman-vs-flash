@@ -1,179 +1,257 @@
-import React, { useState, useEffect, useRef } from "react";
-import { Zap, Atom, Trophy, Repeat, ChevronRight, Loader2, Activity, Sparkles, Swords, Users, Timer } from "lucide-react";
-import { callAgent, parseJSON, collapseWavefunction, sampleSuperposition } from "./api.js";
-import { usePoll } from "./usePoll.js";
+import React, { useState, useRef } from "react";
+import { Zap, Swords, ChevronRight, Repeat, Loader2, Trophy, SkipForward } from "lucide-react";
+import { callAgent, parseJSON } from "./api.js";
 
 /* ------------------------------------------------------------------ *
- *  PLASTIC MAN  vs  THE FLASH  —  Schrödinger's Showdown
- *  - Animated character cards
- *  - Multi-agent fight (Flash agent + Plastic Man agent + Quantum Referee)
- *    running on the OpenAI API, proxied server-side (key stays on the server)
- *  - Live audience poll over WebSockets (whole room votes together)
- *  - Quantum collapse via a real Qiskit Hadamard-and-measure on Aer
+ *  PLASTIC MAN  vs  THE FLASH  —  a comic-book agent showdown
+ *  - A Flash agent and a Plastic Man agent trash-talk and trade moves
+ *  - A Quantum Referee agent calls each round, live on the OpenAI API
+ *  - Played as a paced 5-round SHOW: each round slams in as a comic panel
+ *    with a giant POW/BOOM, speech-bubble taunts, and a 10s read window
  * ------------------------------------------------------------------ */
 
 const CSS = `
-@import url('https://fonts.googleapis.com/css2?family=Bungee&family=Outfit:wght@300;500;700&family=Space+Mono:wght@400;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Bangers&family=Bungee&family=Outfit:wght@300;500;700;900&family=Space+Mono:wght@400;700&display=swap');
+
+* { box-sizing: border-box; }
 
 .qs-root {
   --ink: #0a0a12;
-  --panel: #12121f;
+  --ink2: #14141f;
+  --panel: #16121f;
   --flash: #ee1c25;
   --flash-gold: #ffd200;
   --plastic: #ff2d95;
   --plastic-gold: #ffe600;
-  --quantum: #1fe0c8;
-  --paper: #f4f1e8;
-  --mute: #8a8aa0;
+  --accent: #1fe0c8;
+  --paper: #f6f3ea;
+  --mute: #9a9ab2;
+  --ph: 4px; /* panel halftone scale */
   font-family: 'Outfit', sans-serif;
   color: var(--paper);
-  background:
-    radial-gradient(circle at 20% 10%, rgba(238,28,37,.18), transparent 45%),
-    radial-gradient(circle at 80% 90%, rgba(255,45,149,.18), transparent 45%),
-    var(--ink);
-  min-height: 100%;
+  min-height: 100vh;
+  width: 100%;
   position: relative;
-  overflow: hidden;
-  border-radius: 14px;
+  overflow-x: hidden;
+  background:
+    radial-gradient(circle at 18% 8%, rgba(238,28,37,.20), transparent 42%),
+    radial-gradient(circle at 84% 92%, rgba(255,45,149,.20), transparent 42%),
+    radial-gradient(circle at 60% 50%, rgba(31,224,200,.06), transparent 55%),
+    var(--ink);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
+/* halftone dot field over the whole stage */
 .qs-root::before {
-  content:""; position:absolute; inset:0; pointer-events:none; opacity:.35;
-  background-image: radial-gradient(rgba(255,255,255,.08) 1px, transparent 1px);
-  background-size: 6px 6px;
+  content:""; position:fixed; inset:0; pointer-events:none; z-index:0; opacity:.5;
+  background-image: radial-gradient(rgba(255,255,255,.07) 1px, transparent 1.4px);
+  background-size: 7px 7px;
 }
-.qs-wrap { position:relative; z-index:2; padding: 28px 24px 36px; max-width: 920px; margin:0 auto; }
+/* faint grain/vignette */
+.qs-root::after {
+  content:""; position:fixed; inset:0; pointer-events:none; z-index:0;
+  background: radial-gradient(circle at 50% 40%, transparent 55%, rgba(0,0,0,.55));
+}
 
-.qs-kicker { font-family:'Space Mono',monospace; letter-spacing:.32em; font-size:11px; color:var(--quantum); text-transform:uppercase; }
-.qs-title { font-family:'Bungee'; line-height:.92; margin:6px 0 0; }
+.qs-stage {
+  position: relative; z-index: 2;
+  width: 100%; max-width: 960px;
+  padding: clamp(20px, 4vw, 40px) clamp(16px, 4vw, 28px) 48px;
+  min-height: 100vh;
+  display: flex; flex-direction: column; justify-content: center;
+}
 
-.qs-vs-title { display:flex; flex-direction:column; align-items:center; gap:2px; text-align:center; }
-.qs-vs-title .l1 { font-family:'Bungee'; font-size: clamp(30px,7vw,58px); color:var(--plastic); text-shadow: 3px 3px 0 #000; }
-.qs-vs-title .vs { font-family:'Bungee'; font-size: clamp(34px,8vw,68px); color:var(--flash-gold); -webkit-text-stroke:2px #000; transform: rotate(-4deg); margin:-6px 0; }
-.qs-vs-title .l2 { font-family:'Bungee'; font-size: clamp(30px,7vw,58px); color:var(--flash); text-shadow: 3px 3px 0 #000; }
+.qs-kicker { font-family:'Space Mono',monospace; letter-spacing:.34em; font-size:11px; color:var(--accent); text-transform:uppercase; }
+.qs-h { font-family:'Bungee'; margin:6px 0 0; line-height:.96; }
+.qs-sub { color:var(--mute); font-size:15px; line-height:1.55; max-width:62ch; }
 
+/* ---------- buttons ---------- */
 .qs-btn {
   font-family:'Bungee'; font-size:15px; letter-spacing:.04em;
-  border:none; cursor:pointer; color:#0a0a12; background:var(--quantum);
-  padding:14px 26px; border-radius:10px; box-shadow: 0 6px 0 #0a6b5e, 0 10px 24px rgba(31,224,200,.3);
+  border:none; cursor:pointer; color:#0a0a12; background:var(--accent);
+  padding:15px 28px; border-radius:12px; box-shadow: 0 6px 0 #0a6b5e, 0 12px 28px rgba(31,224,200,.34);
   transition: transform .08s ease, box-shadow .08s ease; display:inline-flex; align-items:center; gap:10px;
 }
-.qs-btn:hover { transform: translateY(-1px); }
+.qs-btn:hover { transform: translateY(-2px); box-shadow: 0 8px 0 #0a6b5e, 0 16px 30px rgba(31,224,200,.4); }
 .qs-btn:active { transform: translateY(4px); box-shadow: 0 2px 0 #0a6b5e; }
 .qs-btn:disabled { opacity:.5; cursor:not-allowed; }
 .qs-btn.ghost { background:transparent; color:var(--paper); box-shadow:none; border:2px solid rgba(255,255,255,.25); }
+.qs-btn.sm { font-size:12px; padding:9px 16px; box-shadow:0 4px 0 #0a6b5e; }
 
-.qs-cards { display:grid; grid-template-columns:1fr 1fr; gap:18px; margin-top:22px; }
+/* ---------- intro ---------- */
+.qs-center { text-align:center; display:flex; flex-direction:column; align-items:center; gap:6px; }
+.qs-vs { display:flex; flex-direction:column; align-items:center; line-height:.86; margin:8px 0 14px; }
+.qs-vs .l { font-family:'Bangers'; letter-spacing:.02em; font-size:clamp(44px,11vw,104px); -webkit-text-stroke:3px #000; }
+.qs-vs .l.p { color:var(--plastic); transform:rotate(-3deg); text-shadow:5px 5px 0 #000; }
+.qs-vs .l.f { color:var(--flash); transform:rotate(2deg); text-shadow:5px 5px 0 #000; }
+.qs-vs .x { font-family:'Bangers'; font-size:clamp(40px,9vw,80px); color:var(--flash-gold); -webkit-text-stroke:3px #000; transform:rotate(-6deg); margin:-10px 0; filter: drop-shadow(0 0 16px rgba(255,210,0,.5)); animation: vsThrob 1.6s ease-in-out infinite; }
+@keyframes vsThrob { 0%,100%{ transform:rotate(-6deg) scale(1);} 50%{ transform:rotate(-6deg) scale(1.08);} }
+
+/* ---------- character cards ---------- */
+.qs-cards { display:grid; grid-template-columns:1fr 1fr; gap:20px; margin-top:24px; }
 @media (max-width:680px){ .qs-cards{ grid-template-columns:1fr; } }
-
 .qs-card {
-  background: linear-gradient(160deg, var(--panel), #0c0c16);
-  border:3px solid #000; border-radius:16px; padding:18px;
-  position:relative; overflow:hidden; box-shadow: 8px 8px 0 rgba(0,0,0,.5);
-  opacity:0; transform: translateY(24px) rotate(var(--rot));
-  animation: cardIn .6s cubic-bezier(.2,.8,.2,1) forwards;
+  background: linear-gradient(160deg, var(--panel), #0b0b14);
+  border:3px solid #000; border-radius:18px; padding:20px; position:relative; overflow:hidden;
+  box-shadow: 9px 9px 0 rgba(0,0,0,.55);
+  opacity:0; transform: translateY(28px) rotate(var(--rot)); animation: cardIn .6s cubic-bezier(.2,.85,.25,1) forwards;
 }
-.qs-card.flash { --rot:-1.5deg; border-top:6px solid var(--flash); animation-delay:.05s; }
-.qs-card.plastic { --rot:1.5deg; border-top:6px solid var(--plastic); animation-delay:.18s; }
+.qs-card.flash { --rot:-1.5deg; border-top:7px solid var(--flash); animation-delay:.05s; }
+.qs-card.plastic { --rot:1.5deg; border-top:7px solid var(--plastic); animation-delay:.16s; }
 @keyframes cardIn { to { opacity:1; transform: translateY(0) rotate(var(--rot)); } }
-
-.qs-emblem { width:78px; height:78px; border-radius:50%; display:grid; place-items:center; margin-bottom:10px; position:relative; }
+.qs-emblem { width:74px; height:74px; border-radius:50%; display:grid; place-items:center; margin-bottom:10px; border:3px solid #000; }
 .qs-emblem.flash { background: radial-gradient(circle, var(--flash-gold), #c9a000); box-shadow:0 0 26px rgba(255,210,0,.5); }
 .qs-emblem.plastic { background: radial-gradient(circle, var(--plastic), #b8005f); box-shadow:0 0 26px rgba(255,45,149,.5); }
-.qs-emblem .bolt { animation: flick 2.2s infinite; }
+.qs-emblem .bolt { animation: flick 2.4s infinite; }
 @keyframes flick { 0%,100%{opacity:1} 92%{opacity:1} 94%{opacity:.3} 96%{opacity:1} }
-.qs-emblem.plastic .blob { animation: morph 4s ease-in-out infinite; }
-@keyframes morph { 0%,100%{ border-radius:50% 50% 50% 50%; transform:scale(1);} 50%{ border-radius:60% 40% 55% 45%; transform:scale(1.08) rotate(8deg);} }
-
-.qs-name { font-family:'Bungee'; font-size:22px; margin:0; }
-.qs-name.flash { color:var(--flash); }
-.qs-name.plastic { color:var(--plastic); }
-.qs-alias { font-family:'Space Mono',monospace; font-size:12px; color:var(--mute); margin:2px 0 12px; }
-
+.qs-emblem .blob { width:36px; height:36px; background:#0a0a12; border-radius:50% 50% 55% 45%; animation: morph 3.6s ease-in-out infinite; }
+@keyframes morph { 0%,100%{ border-radius:50%; transform:scale(1) rotate(0);} 50%{ border-radius:60% 40% 55% 45%; transform:scale(1.1) rotate(10deg);} }
+.qs-name { font-family:'Bangers'; letter-spacing:.03em; font-size:30px; margin:0; }
+.qs-name.flash { color:var(--flash); } .qs-name.plastic { color:var(--plastic); }
+.qs-alias { font-family:'Space Mono',monospace; font-size:12px; color:var(--mute); margin:2px 0 14px; }
 .qs-stat { margin:9px 0; }
 .qs-stat .lab { display:flex; justify-content:space-between; font-size:12px; font-family:'Space Mono',monospace; color:var(--mute); margin-bottom:3px; }
 .qs-bar { height:9px; background:#000; border-radius:6px; overflow:hidden; }
-.qs-bar > span { display:block; height:100%; border-radius:6px; width:0; animation: grow 1s ease forwards; }
+.qs-bar > span { display:block; height:100%; border-radius:6px; width:0; animation: grow 1.1s ease forwards; }
 .qs-card.flash .qs-bar > span { background:linear-gradient(90deg,var(--flash),var(--flash-gold)); }
 .qs-card.plastic .qs-bar > span { background:linear-gradient(90deg,var(--plastic),var(--plastic-gold)); }
 @keyframes grow { to { width: var(--w); } }
+.qs-powers { margin-top:14px; display:flex; flex-wrap:wrap; gap:6px; }
+.qs-chip { font-size:11px; font-family:'Space Mono',monospace; padding:4px 9px; border-radius:6px; background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.12); }
 
-.qs-powers { margin-top:12px; display:flex; flex-wrap:wrap; gap:6px; }
-.qs-chip { font-size:11px; font-family:'Space Mono',monospace; padding:4px 8px; border-radius:6px; background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.1); }
+/* ---------- show: round dots ---------- */
+.qs-dots { display:flex; gap:8px; justify-content:center; margin-bottom:18px; }
+.qs-dots .d { width:22px; height:7px; border-radius:4px; background:rgba(255,255,255,.14); transition:background .3s; }
+.qs-dots .d.flash { background:var(--flash); } .qs-dots .d.plastic { background:var(--plastic); } .qs-dots .d.even { background:var(--accent); }
+.qs-dots .d.cur { box-shadow:0 0 0 2px rgba(255,255,255,.4); animation: dotPulse 1s infinite; }
+@keyframes dotPulse { 0%,100%{opacity:1} 50%{opacity:.4} }
 
-.qs-section { margin-top:26px; }
-.qs-h { font-family:'Bungee'; font-size:18px; margin:0 0 4px; }
-.qs-sub { color:var(--mute); font-size:14px; margin:0 0 16px; max-width:60ch; }
+/* ---------- show: clash interstitial ---------- */
+.qs-clash { position:relative; min-height:400px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:24px; overflow:hidden; text-align:center; }
+.qs-clash > * { position:relative; z-index:2; }
+.qs-clash .roundno { font-family:'Bangers'; letter-spacing:.04em; font-size:clamp(42px,9vw,76px); color:var(--paper); -webkit-text-stroke:2px #000; text-shadow:5px 5px 0 #000; }
+.qs-clash .arena { display:flex; align-items:center; justify-content:center; gap:clamp(14px,4vw,34px); }
+.qs-clash .vsword { font-family:'Bangers'; font-size:clamp(30px,7vw,54px); color:var(--flash-gold); -webkit-text-stroke:2px #000; filter:drop-shadow(0 0 14px rgba(255,210,0,.5)); animation: vsThrob 1s infinite; }
+.qs-clash .ce { width:clamp(78px,16vw,104px); height:clamp(78px,16vw,104px); border-radius:50%; border:4px solid #000; display:grid; place-items:center; box-shadow:6px 6px 0 rgba(0,0,0,.5); }
+.qs-clash .ce.l { background:radial-gradient(circle,var(--plastic),#b8005f); animation: clashL 1.2s cubic-bezier(.5,0,.6,1) infinite alternate; }
+.qs-clash .ce.r { background:radial-gradient(circle,var(--flash-gold),#c9a000); animation: clashR 1.2s cubic-bezier(.5,0,.6,1) infinite alternate; }
+@keyframes clashL { from{ transform:translateX(-34px) rotate(-8deg);} to{ transform:translateX(10px) rotate(0);} }
+@keyframes clashR { from{ transform:translateX(34px) rotate(8deg);} to{ transform:translateX(-10px) rotate(0);} }
+.qs-clash .caption { font-family:'Space Mono',monospace; font-size:13px; color:var(--accent); display:flex; align-items:center; gap:8px; }
+.qs-speedlines { position:absolute; inset:0; z-index:0; opacity:.5;
+  background: repeating-conic-gradient(from 0deg at 50% 50%, transparent 0 6deg, rgba(255,255,255,.07) 6deg 7deg);
+  animation: spin 9s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
 
-.qs-poll { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
-.qs-vote { cursor:pointer; border:3px solid #000; border-radius:12px; padding:16px; text-align:center; font-family:'Bungee'; font-size:16px; transition:transform .1s, box-shadow .1s; background:var(--panel); position:relative; overflow:hidden; }
-.qs-vote.flash { color:var(--flash); } .qs-vote.plastic { color:var(--plastic); }
-.qs-vote:hover { transform:translateY(-2px); }
-.qs-vote.sel.flash { background:var(--flash); color:#fff; box-shadow:0 0 24px rgba(238,28,37,.5); }
-.qs-vote.sel.plastic { background:var(--plastic); color:#fff; box-shadow:0 0 24px rgba(255,45,149,.5); }
-.qs-vote .tallybar { position:absolute; left:0; bottom:0; height:5px; transition:width .5s ease; }
-.qs-vote.flash .tallybar { background:var(--flash-gold); }
-.qs-vote.plastic .tallybar { background:var(--plastic-gold); }
-.qs-vote .pct { display:block; font-family:'Space Mono',monospace; font-size:12px; margin-top:6px; opacity:.85; }
+/* ---------- show: comic panel ---------- */
+.qs-panel {
+  position:relative; border:4px solid #000; border-radius:14px; padding:22px 20px 20px;
+  background: linear-gradient(160deg, #1b1526, #0b0b14);
+  box-shadow: 10px 10px 0 rgba(0,0,0,.55);
+  overflow:hidden; animation: slamIn .5s cubic-bezier(.2,1.3,.4,1) both;
+}
+@keyframes slamIn {
+  0% { opacity:0; transform: scale(1.25) translateY(-12px); }
+  70% { opacity:1; }
+  85% { transform: scale(.98) translateY(2px); }
+  100% { transform: scale(1) translateY(0); }
+}
+.qs-panel .panel-halftone { position:absolute; inset:0; pointer-events:none; opacity:.3;
+  background: radial-gradient(rgba(255,255,255,.06) 1px, transparent 1.3px); background-size: var(--ph) var(--ph); }
+/* impact speed lines that streak across on reveal */
+.qs-panel .streaks { position:absolute; inset:-20%; pointer-events:none; z-index:0; opacity:.16;
+  background: repeating-linear-gradient(115deg, transparent 0 16px, var(--streak,#fff) 16px 18px);
+  animation: streakIn .55s ease-out both; }
+@keyframes streakIn { from{ opacity:0; transform:translateX(-12%);} to{ opacity:.16; transform:translateX(0);} }
 
-.qs-pollmeta { display:flex; align-items:center; gap:8px; font-family:'Space Mono',monospace; font-size:12px; color:var(--mute); margin-top:12px; }
-.qs-dot { width:8px; height:8px; border-radius:50%; background:var(--mute); }
-.qs-dot.live { background:var(--quantum); box-shadow:0 0 8px var(--quantum); animation:pulse 1.4s infinite; }
-@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.35} }
+.qs-panel .rh { position:relative; z-index:2; display:flex; align-items:center; justify-content:space-between; font-family:'Space Mono',monospace; font-size:12px; color:var(--accent); margin-bottom:6px; }
+.qs-fighters { position:relative; z-index:2; display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:6px; }
+@media (max-width:560px){ .qs-fighters{ grid-template-columns:1fr; } }
+.qs-side { display:flex; flex-direction:column; gap:10px; }
+.qs-side .who { font-family:'Bangers'; letter-spacing:.03em; font-size:22px; display:flex; align-items:center; gap:8px; }
+.qs-side.flash .who { color:var(--flash); } .qs-side.plastic .who { color:var(--plastic); }
+.qs-move { font-family:'Bungee'; font-size:15px; padding:9px 12px; border-radius:9px; border:2px solid #000; }
+.qs-side.flash .qs-move { background:rgba(238,28,37,.16); border-left:5px solid var(--flash); }
+.qs-side.plastic .qs-move { background:rgba(255,45,149,.16); border-left:5px solid var(--plastic); }
 
-.qs-round { border:2px solid rgba(255,255,255,.1); border-radius:12px; padding:14px; margin-bottom:12px; background:rgba(255,255,255,.03);
-  opacity:0; transform:translateY(12px); animation:fadeUp .5s forwards; }
-@keyframes fadeUp { to { opacity:1; transform:translateY(0); } }
-.qs-round .rh { display:flex; align-items:center; gap:8px; font-family:'Space Mono',monospace; font-size:12px; color:var(--quantum); margin-bottom:8px; }
-.qs-moves { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:8px; }
-.qs-move { padding:8px 10px; border-radius:8px; font-size:13px; }
-.qs-move.flash { background:rgba(238,28,37,.12); border-left:3px solid var(--flash); }
-.qs-move.plastic { background:rgba(255,45,149,.12); border-left:3px solid var(--plastic); }
-.qs-move .mv { font-weight:700; }
-.qs-move .tt { font-style:italic; color:var(--mute); font-size:12px; }
-.qs-narr { font-size:14px; line-height:1.5; }
-.qs-edge { font-family:'Space Mono',monospace; font-size:11px; margin-top:8px; color:var(--mute); }
+/* speech bubbles */
+.bubble { position:relative; background:var(--paper); color:#11111a; border:3px solid #000; border-radius:16px;
+  padding:11px 13px; font-family:'Bangers'; letter-spacing:.02em; font-size:18px; line-height:1.1;
+  box-shadow:4px 4px 0 rgba(0,0,0,.5); opacity:0; transform:scale(.6); animation: popBubble .4s cubic-bezier(.2,1.5,.4,1) forwards; }
+.qs-side.flash .bubble { animation-delay:.18s; } .qs-side.plastic .bubble { animation-delay:.3s; }
+.bubble::after { content:""; position:absolute; bottom:-13px; width:22px; height:22px; background:var(--paper);
+  border-right:3px solid #000; border-bottom:3px solid #000; transform:rotate(45deg); }
+.qs-side.flash .bubble::after { left:24px; } .qs-side.plastic .bubble::after { right:24px; }
+@keyframes popBubble { to { opacity:1; transform:scale(1); } }
 
-.qs-momentum { display:flex; align-items:center; gap:10px; margin:16px 0; font-family:'Space Mono',monospace; font-size:12px; }
-.qs-momentum .track { flex:1; height:12px; background:#000; border-radius:8px; position:relative; overflow:hidden; }
-.qs-momentum .track .fill { position:absolute; top:0; bottom:0; left:50%; transition:all .6s ease; }
+.qs-narr { position:relative; z-index:2; margin-top:18px; padding:13px 15px; border-radius:10px;
+  background:rgba(0,0,0,.32); border-left:3px solid var(--accent); font-size:15px; line-height:1.55; }
+.qs-narr .ref { font-family:'Space Mono',monospace; font-size:11px; color:var(--accent); display:block; margin-bottom:4px; letter-spacing:.12em; }
 
-/* quantum */
-.qs-quantum { text-align:center; padding:18px 0; }
-.qs-qubit { width:200px; height:200px; margin:18px auto; position:relative; }
-.qs-qubit .ring { position:absolute; inset:0; border-radius:50%; border:2px dashed rgba(31,224,200,.4); animation:spin 8s linear infinite; }
-.qs-qubit .ring.b { inset:24px; border-color:rgba(255,45,149,.4); animation-direction:reverse; animation-duration:6s; }
-@keyframes spin { to { transform:rotate(360deg); } }
-.qs-superpos { position:absolute; inset:0; display:grid; place-items:center; }
-.qs-superpos .glyph { font-family:'Bungee'; font-size:46px; animation:flickerState 1.1s steps(1) infinite; }
-@keyframes flickerState { 0%,49%{ color:var(--flash); content:""; } 50%,100%{ color:var(--plastic); } }
-.qs-collapsing .qs-qubit { animation: collapseShake .5s; }
-@keyframes collapseShake { 0%,100%{transform:translateX(0)} 20%{transform:translateX(-8px)} 40%{transform:translateX(8px)} 60%{transform:translateX(-5px)} 80%{transform:translateX(5px)} }
+/* the big onomatopoeia */
+.qs-fx { position:absolute; top:-6px; right:-2px; z-index:5; width:190px; height:190px; pointer-events:none;
+  display:grid; place-items:center; transform:rotate(8deg); }
+.qs-fx .rays { position:absolute; inset:0;
+  background: repeating-conic-gradient(from 0deg at 50% 50%, var(--fx) 0 9deg, transparent 9deg 20deg);
+  -webkit-mask: radial-gradient(circle, #000 38%, transparent 70%); mask: radial-gradient(circle, #000 38%, transparent 70%);
+  opacity:.85; animation: spin 7s linear infinite; }
+.qs-fx .word { position:relative; font-family:'Bangers'; letter-spacing:.02em; font-size:clamp(34px,9vw,58px);
+  color:var(--fx); -webkit-text-stroke:3px #000; text-shadow:4px 4px 0 #000, 0 0 22px rgba(0,0,0,.4);
+  animation: fxPop .5s cubic-bezier(.2,1.7,.4,1) both, fxWobble 2.4s ease-in-out .5s infinite; }
+@keyframes fxPop { 0%{ transform:scale(0) rotate(-30deg); opacity:0;} 70%{ transform:scale(1.25) rotate(6deg);} 100%{ transform:scale(1) rotate(0); opacity:1;} }
+@keyframes fxWobble { 0%,100%{ transform:rotate(-3deg);} 50%{ transform:rotate(3deg);} }
+@media (max-width:560px){ .qs-fx { width:130px; height:130px; top:-14px; } }
 
-.qs-amp { display:flex; gap:14px; justify-content:center; margin-top:8px; }
-.qs-amp .col { font-family:'Space Mono',monospace; font-size:12px; }
-.qs-amp .colbar { width:40px; background:#000; border-radius:6px; height:90px; display:flex; align-items:flex-end; overflow:hidden; margin:6px auto; }
-.qs-amp .colbar > span { display:block; width:100%; transition:height .8s ease; }
+/* read window */
+.qs-read { display:flex; align-items:center; gap:14px; margin-top:18px; }
+.qs-read .track { flex:1; height:8px; background:rgba(255,255,255,.12); border-radius:6px; overflow:hidden; }
+.qs-read .track .fill { height:100%; background:linear-gradient(90deg,var(--accent),#7fffe8); border-radius:6px; transition:width .12s linear; }
+.qs-read .lab { font-family:'Space Mono',monospace; font-size:12px; color:var(--mute); white-space:nowrap; }
 
-.qs-result { text-align:center; padding:10px 0 4px; }
-.qs-winner { font-family:'Bungee'; font-size:clamp(28px,7vw,52px); margin:6px 0; text-shadow:3px 3px 0 #000; }
-.qs-stalemate { font-family:'Bungee'; font-size:clamp(22px,5vw,38px); color:var(--quantum); text-shadow:3px 3px 0 #000; }
-.qs-flair { font-size:14px; color:var(--mute); max-width:56ch; margin:10px auto 0; line-height:1.55; }
+/* ---------- result ---------- */
+.qs-result { text-align:center; display:flex; flex-direction:column; align-items:center; gap:6px; }
+.qs-winner { font-family:'Bangers'; letter-spacing:.03em; font-size:clamp(46px,12vw,108px); -webkit-text-stroke:3px #000; text-shadow:6px 6px 0 #000; line-height:.9; margin:6px 0;
+  animation: slamIn .55s cubic-bezier(.2,1.3,.4,1) both; }
+.qs-stale { font-family:'Bangers'; font-size:clamp(40px,10vw,88px); color:var(--accent); -webkit-text-stroke:3px #000; text-shadow:6px 6px 0 #000; line-height:.9; margin:6px 0;
+  animation: slamIn .55s cubic-bezier(.2,1.3,.4,1) both; }
+.qs-flair { font-size:16px; color:var(--mute); max-width:54ch; line-height:1.6; margin:6px auto 0; }
+.qs-verdict { margin-top:10px; padding:14px 18px; border:3px solid #000; border-radius:14px; background:rgba(0,0,0,.34);
+  border-left:4px solid var(--accent); max-width:60ch; }
+.qs-verdict .ref { font-family:'Space Mono',monospace; font-size:11px; color:var(--accent); letter-spacing:.14em; display:block; margin-bottom:5px; }
+.qs-verdict .line { font-family:'Bangers'; font-size:22px; letter-spacing:.02em; line-height:1.15; }
+.qs-burstwrap { position:relative; display:grid; place-items:center; width:200px; height:200px; }
+.qs-burstwrap .rays { position:absolute; inset:0;
+  background: repeating-conic-gradient(from 0deg at 50% 50%, var(--fx,#1fe0c8) 0 8deg, transparent 8deg 18deg);
+  -webkit-mask: radial-gradient(circle,#000 30%, transparent 72%); mask: radial-gradient(circle,#000 30%, transparent 72%);
+  opacity:.7; animation: spin 8s linear infinite; }
 
-.qs-note { margin-top:14px; font-family:'Space Mono',monospace; font-size:11px; color:var(--mute); border-left:2px solid var(--quantum); padding-left:10px; line-height:1.5; }
-.qs-footer { margin-top:22px; display:flex; gap:10px; flex-wrap:wrap; justify-content:center; }
-.qs-spin { animation:spin 1s linear infinite; }
-.qs-err { background:rgba(238,28,37,.15); border:1px solid var(--flash); padding:10px 12px; border-radius:8px; font-size:13px; margin-top:10px; }
+.qs-footer { margin-top:26px; display:flex; gap:12px; flex-wrap:wrap; justify-content:center; }
+.qs-spin { animation: spin 1s linear infinite; }
+.qs-err { background:rgba(238,28,37,.16); border:1px solid var(--flash); padding:12px 14px; border-radius:10px; font-size:14px; margin-top:14px; }
 `;
 
 /* ----------------------------- agents ----------------------------- */
-const FLASH_SYS = `You are Barry Allen, THE FLASH, in a comedic comic-book battle simulation against Plastic Man. You are the fastest man alive — light-speed movement, phasing through matter, the infinite mass punch, speed-stealing and the occasional time trick. You're confident, a little cocky, heroic. Given the fight state, pick ONE move (2-4 punchy words) and a short cocky taunt (max 12 words). Respond with ONLY minified JSON, no markdown: {"move":"...","taunt":"..."}`;
+const FLASH_SYS = `You are Barry Allen, THE FLASH, in a comedic comic-book battle simulation against Plastic Man. You are the fastest man alive — light-speed movement, phasing through matter, the infinite mass punch, speed-stealing and the occasional time trick. You're confident, a little cocky, heroic, and very funny. Given the fight state, pick ONE move (2-4 punchy words) and a cocky, joke-filled taunt (max 16 words). Respond with ONLY minified JSON, no markdown: {"move":"...","taunt":"..."}`;
 
-const PM_SYS = `You are Eel O'Brian, PLASTIC MAN, in a comedic comic-book battle simulation against the Flash. You are infinitely malleable, basically indestructible, you shapeshift into anything, regenerate from being shattered, and you're a total goofball who knows he can't really be hurt. Given the fight state, pick ONE move (2-4 silly words) and a goofy taunt (max 12 words). Respond with ONLY minified JSON, no markdown: {"move":"...","taunt":"..."}`;
+const PM_SYS = `You are Eel O'Brian, PLASTIC MAN, in a comedic comic-book battle simulation against the Flash. You are infinitely malleable, basically indestructible, you shapeshift into anything, regenerate from being shattered, and you're a total goofball who knows he can't really be hurt. Given the fight state, pick ONE move (2-4 silly words) and a goofy, pun-filled taunt (max 16 words). Respond with ONLY minified JSON, no markdown: {"move":"...","taunt":"..."}`;
 
-const JUDGE_SYS = `You are the QUANTUM REFEREE narrating a Flash vs Plastic Man bout for a hackathon crowd. Given both fighters' moves this round, write vivid, funny play-by-play — 2 sentences max, about 40 words. Then judge who edged the round. Core running joke: the Flash cannot actually damage the indestructible, rubbery Plastic Man, and can never catch or pin him either — so lean into glorious stalemate energy and absurd comedy. Respond with ONLY minified JSON, no markdown: {"narration":"...","edge":"flash"|"plastic"|"even"}`;
+const JUDGE_SYS = `You are the QUANTUM REFEREE narrating a Flash vs Plastic Man bout for a hyped lunchtime crowd. Given both fighters' moves this round, write vivid, hilarious play-by-play — 2 to 3 sentences, about 50 words, packed with jokes. Then judge who edged the round. Core running joke: the Flash cannot actually damage the indestructible, rubbery Plastic Man, and can never catch or pin him either — so lean into glorious stalemate energy and absurd comedy. Respond with ONLY minified JSON, no markdown: {"narration":"...","edge":"flash"|"plastic"|"even"}`;
 
-const FIGHT_DURATION_MS = 60_000; // the bout runs for ~one minute
-const MAX_ROUNDS = 40; // safety cap so a slow/looping API can't run away
+const ROUNDS = 5;
+const READ_MS = 10_000; // dwell time per round so the crowd can read the jokes
+
+/* comic onomatopoeia, chosen by who edged the round */
+const FX = {
+  flash: ["ZOOM!", "ZIP!", "FWOOSH!", "ZAK!", "WHIP!"],
+  plastic: ["BOING!", "SPROING!", "BWOMP!", "SPLAT!", "WOBBLE!"],
+  even: ["POW!", "BANG!", "WHAM!", "KAPOW!", "BOOM!"],
+};
+const FX_COLOR = { flash: "var(--flash-gold)", plastic: "var(--plastic-gold)", even: "var(--accent)" };
+function pickFx(edge, i) {
+  const pool = FX[edge] || FX.even;
+  return pool[i % pool.length];
+}
 
 /* ----------------------------- data ------------------------------- */
 const FIGHTERS = {
@@ -193,151 +271,133 @@ const FIGHTERS = {
 
 /* ----------------------------- app -------------------------------- */
 export default function App() {
-  const [scene, setScene] = useState("intro"); // intro -> cards -> arena -> quantum -> result
-  const [prediction, setPrediction] = useState(null);
-  const [rounds, setRounds] = useState([]);
-  const [fighting, setFighting] = useState(false);
+  const [scene, setScene] = useState("intro"); // intro -> cards -> show -> result
+  const [log, setLog] = useState([]); // resolved rounds
+  const [activeIdx, setActiveIdx] = useState(-1);
+  const [phase, setPhase] = useState("clash"); // clash | reveal (within show)
+  const [readLeft, setReadLeft] = useState(READ_MS);
+  const [verdict, setVerdict] = useState(null); // { winner, closing, score }
   const [error, setError] = useState(null);
-  const [collapsing, setCollapsing] = useState(false);
-  const [outcome, setOutcome] = useState(null); // 'flash' | 'plastic' | 'stalemate'
-  const [measurement, setMeasurement] = useState(null); // raw quantum result for display
-  const [timeLeft, setTimeLeft] = useState(FIGHT_DURATION_MS); // ms remaining in the bout
-  const [qSample, setQSample] = useState(null); // latest live Aer superposition sample
-  const logRef = useRef(null);
-  const poll = usePoll();
+  const skipRef = useRef(false);
+  const runningRef = useRef(false);
 
-  // Referee's scorecard (LLM judge), NOT the quantum outcome — purely the fight.
-  const momentum = rounds.reduce((a, r) => a + (r.edge === "flash" ? 1 : r.edge === "plastic" ? -1 : 0), 0);
+  // a 10s read window that can be cut short with the SKIP button
+  function waitRead(ms) {
+    return new Promise((resolve) => {
+      const start = Date.now();
+      setReadLeft(ms);
+      const id = setInterval(() => {
+        const left = Math.max(0, ms - (Date.now() - start));
+        setReadLeft(left);
+        if (left <= 0 || skipRef.current) {
+          clearInterval(id);
+          skipRef.current = false;
+          resolve();
+        }
+      }, 100);
+    });
+  }
 
-  useEffect(() => {
-    if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
-  }, [rounds]);
-
-  // While the qubit is unobserved — during the bout, and on the quantum screen
-  // before you measure — resample the honest Hadamard every ~1.5s. It stays at
-  // ~50/50 no matter how the fight is going; the jitter is real shot noise.
-  useEffect(() => {
-    const active = fighting || (scene === "quantum" && !collapsing);
-    if (!active) return;
-    let alive = true;
-    const tick = () => {
-      sampleSuperposition()
-        .then((s) => { if (alive) setQSample(s); })
-        .catch(() => {}); // keep the meter resilient to a dropped sample
-    };
-    tick();
-    const id = setInterval(tick, 1500);
-    return () => { alive = false; clearInterval(id); };
-  }, [fighting, scene, collapsing]);
-
-  async function runFight() {
-    setFighting(true);
+  async function runShow() {
+    if (runningRef.current) return;
+    runningRef.current = true;
+    setScene("show");
+    setLog([]);
+    setVerdict(null);
     setError(null);
-    setRounds([]);
+    skipRef.current = false;
     const history = [];
-    const deadline = Date.now() + FIGHT_DURATION_MS;
-    setTimeLeft(FIGHT_DURATION_MS);
-    // tick the on-screen countdown while the bout runs
-    const ticker = setInterval(() => setTimeLeft(Math.max(0, deadline - Date.now())), 250);
     try {
-      let i = 0;
-      // Keep starting fresh rounds until the minute is up (the in-flight round
-      // finishes, so the bell may ring a beat past 0). MAX_ROUNDS is a backstop.
-      while (Date.now() < deadline && i < MAX_ROUNDS) {
-        i++;
-        const secsLeft = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
-        const clock = `~${secsLeft}s left on the clock.`;
+      for (let i = 1; i <= ROUNDS; i++) {
+        setActiveIdx(i - 1);
+        setPhase("clash"); // the clash animation covers the generation latency
         const summary = history.length
           ? history.slice(-2).map((h) => `R${h.round}: ${h.narration}`).join(" ")
           : "The bell just rang; the bout has begun.";
         const [fRaw, pRaw] = await Promise.all([
-          callAgent(FLASH_SYS, `Round ${i}. ${clock} Fight so far: ${summary}\nChoose your move now.`),
-          callAgent(PM_SYS, `Round ${i}. ${clock} Fight so far: ${summary}\nChoose your move now.`),
+          callAgent(FLASH_SYS, `Round ${i} of ${ROUNDS}. Fight so far: ${summary}\nChoose your move now.`),
+          callAgent(PM_SYS, `Round ${i} of ${ROUNDS}. Fight so far: ${summary}\nChoose your move now.`),
         ]);
-        const flash = parseJSON(fRaw, { move: "Sonic Blitz", taunt: "Too slow, stretch!" });
-        const pm = parseJSON(pRaw, { move: "Rubber Rebound", taunt: "Boing! Missed me again!" });
+        const flash = parseJSON(fRaw, { move: "Sonic Blitz", taunt: "Too slow, stretch! I lapped you twice already." });
+        const pm = parseJSON(pRaw, { move: "Rubber Rebound", taunt: "Boing! Missed me — try again in a millennium, speedy!" });
         const jRaw = await callAgent(
           JUDGE_SYS,
           `Round ${i}.\nFlash used "${flash.move}" (taunt: "${flash.taunt}").\nPlastic Man used "${pm.move}" (taunt: "${pm.taunt}").\nNarrate and judge the round.`
         );
         const judge = parseJSON(jRaw, {
-          narration: `The Flash unloads ${flash.move} at blinding speed — and Plastic Man simply jiggles, absorbs it, and grins.`,
+          narration: `The Flash unloads ${flash.move} at blinding speed — and Plastic Man simply jiggles, absorbs it, snaps back into shape, and grins. Nobody is closer to winning. The crowd loves it.`,
           edge: "even",
         });
-        const entry = { round: i, flash, pm, narration: judge.narration, edge: ["flash", "plastic", "even"].includes(judge.edge) ? judge.edge : "even" };
+        const edge = ["flash", "plastic", "even"].includes(judge.edge) ? judge.edge : "even";
+        const entry = { round: i, flash, pm, narration: judge.narration, edge, fx: pickFx(edge, i) };
         history.push(entry);
-        setRounds((r) => [...r, entry]);
+        setLog((l) => [...l, entry]);
+        setPhase("reveal");
+        await waitRead(READ_MS);
       }
-    } catch (e) {
-      setError("The agents hit a snag reaching the OpenAI API. Check the server logs / API key and run the simulation again.");
-    } finally {
-      clearInterval(ticker);
-      setTimeLeft(0);
-      setFighting(false);
-    }
-  }
 
-  // Real quantum measurement: POST to the backend, which runs a Qiskit
-  // Hadamard-and-measure circuit on the Aer simulator and returns the
-  // collapsed outcome along with the measured counts.
-  async function collapse() {
-    setCollapsing(true);
-    setError(null);
-    try {
-      const res = await collapseWavefunction();
-      // brief dramatic pause so the collapse animation reads
-      setTimeout(() => {
-        setMeasurement(res);
-        setOutcome(res.outcome);
-        setCollapsing(false);
-        setScene("result");
-      }, 2200);
+      // verdict from the referee's scorecard — no quantum, lean into the gag
+      const score = history.reduce(
+        (a, r) => ({ ...a, [r.edge]: a[r.edge] + 1 }),
+        { flash: 0, plastic: 0, even: 0 }
+      );
+      const m = score.flash - score.plastic;
+      const winner = m >= 2 ? "flash" : m <= -2 ? "plastic" : "stalemate";
+
+      const fallbackClose =
+        winner === "stalemate"
+          ? "Dead heat! He can't be hit, you can't be caught — see you at lunch tomorrow to argue again!"
+          : winner === "flash"
+          ? "The Flash edges it on points — by the only frame Plastic Man wasn't paying attention!"
+          : "Plastic Man bounces away with it — you simply cannot beat what refuses to break!";
+      let closing = fallbackClose;
+      try {
+        const cRaw = await callAgent(
+          JUDGE_SYS,
+          `The ${ROUNDS}-round bout is over. Flash edged ${score.flash}, Plastic Man edged ${score.plastic}, ${score.even} even. The verdict is ${
+            winner === "stalemate" ? "an ETERNAL STALEMATE" : winner.toUpperCase() + " takes it on points"
+          }. Give ONE punchy, funny closing call for the crowd (max 24 words). Respond with ONLY minified JSON: {"line":"..."}`
+        );
+        closing = parseJSON(cRaw, { line: fallbackClose }).line || fallbackClose;
+      } catch (e) {
+        /* keep fallback */
+      }
+
+      setVerdict({ winner, closing, score });
+      setScene("result");
     } catch (e) {
-      setError("The quantum backend couldn't run the circuit. Is the Qiskit venv installed?");
-      setCollapsing(false);
+      setError("The agents hit a snag reaching the OpenAI API. Check the server / API key and run it again.");
+    } finally {
+      runningRef.current = false;
     }
   }
 
   function reset() {
-    setScene("intro"); setPrediction(null); setRounds([]); setOutcome(null); setMeasurement(null); setError(null);
+    setScene("intro");
+    setLog([]);
+    setActiveIdx(-1);
+    setVerdict(null);
+    setError(null);
   }
 
   return (
     <div className="qs-root">
       <style>{CSS}</style>
-      <div className="qs-wrap">
+      <div className="qs-stage">
         {scene === "intro" && <Intro onStart={() => setScene("cards")} />}
-
-        {scene === "cards" && (
-          <Cards
-            prediction={prediction}
-            setPrediction={setPrediction}
-            poll={poll}
-            onNext={() => setScene("arena")}
-          />
-        )}
-
-        {scene === "arena" && (
-          <Arena
-            rounds={rounds}
-            fighting={fighting}
+        {scene === "cards" && <Cards onStart={runShow} />}
+        {scene === "show" && (
+          <Show
+            log={log}
+            activeIdx={activeIdx}
+            phase={phase}
+            readLeft={readLeft}
             error={error}
-            momentum={momentum}
-            timeLeft={timeLeft}
-            qSample={qSample}
-            logRef={logRef}
-            onFight={runFight}
-            onCollapse={() => setScene("quantum")}
+            onSkip={() => { skipRef.current = true; }}
+            onRetry={runShow}
           />
         )}
-
-        {scene === "quantum" && (
-          <Quantum collapsing={collapsing} qSample={qSample} error={error} onMeasure={collapse} />
-        )}
-
-        {scene === "result" && (
-          <Result outcome={outcome} prediction={prediction} measurement={measurement} onReplay={reset} />
-        )}
+        {scene === "result" && <Result verdict={verdict} onReplay={reset} />}
       </div>
     </div>
   );
@@ -346,16 +406,16 @@ export default function App() {
 /* --------------------------- scenes ------------------------------- */
 function Intro({ onStart }) {
   return (
-    <div style={{ textAlign: "center", padding: "30px 0" }}>
-      <div className="qs-kicker">AI × Quantum · Lunch-Break Showdown</div>
-      <div className="qs-vs-title" style={{ margin: "22px 0" }}>
-        <div className="l1">PLASTIC MAN</div>
-        <div className="vs">VS</div>
-        <div className="l2">THE FLASH</div>
+    <div className="qs-center">
+      <div className="qs-kicker">A Comic-Book Agent Showdown</div>
+      <div className="qs-vs">
+        <div className="l p">PLASTIC MAN</div>
+        <div className="x">VS</div>
+        <div className="l f">THE FLASH</div>
       </div>
-      <p className="qs-sub" style={{ margin: "0 auto 22px" }}>
-        Settle the eternal debate. Two AI agents take on their true superpowers, a Quantum Referee
-        calls the action live, and the winner is decided by collapsing a qubit. Unstoppable force,
+      <p className="qs-sub" style={{ marginBottom: 22 }}>
+        Settle the eternal debate. Two AI agents take on their true superpowers and a Quantum Referee
+        calls the action live — round by round, in glorious comic-book panels. Unstoppable force,
         meet indestructible rubber.
       </p>
       <button className="qs-btn" onClick={onStart}>
@@ -365,53 +425,20 @@ function Intro({ onStart }) {
   );
 }
 
-function Cards({ prediction, setPrediction, poll, onNext }) {
-  const { tally, voters, connected, vote } = poll;
-  const total = tally.flash + tally.plastic;
-  const pct = (n) => (total ? Math.round((n / total) * 100) : 0);
-
-  function pick(choice) {
-    setPrediction(choice);
-    vote(choice); // broadcast to the whole room over the WebSocket
-  }
-
+function Cards({ onStart }) {
   return (
     <div>
-      <div className="qs-kicker">Tale of the Tape</div>
-      <h2 className="qs-title" style={{ fontSize: 24 }}>KNOW YOUR FIGHTERS</h2>
+      <div style={{ textAlign: "center" }}>
+        <div className="qs-kicker">Tale of the Tape</div>
+        <h2 className="qs-h" style={{ fontSize: 26 }}>KNOW YOUR FIGHTERS</h2>
+      </div>
       <div className="qs-cards">
         <FighterCard which="flash" />
         <FighterCard which="plastic" />
       </div>
-
-      <div className="qs-section">
-        <div className="qs-kicker">Audience Poll · Live</div>
-        <h3 className="qs-h">WHO TAKES IT?</h3>
-        <p className="qs-sub">Cast your prediction before the simulation runs — every screen in the room votes into the same live tally over WebSockets.</p>
-        <div className="qs-poll">
-          <div className={`qs-vote plastic ${prediction === "plastic" ? "sel" : ""}`} onClick={() => pick("plastic")}>
-            PLASTIC MAN
-            <span className="pct">{pct(tally.plastic)}% · {tally.plastic}</span>
-            <div className="tallybar" style={{ width: `${pct(tally.plastic)}%` }} />
-          </div>
-          <div className={`qs-vote flash ${prediction === "flash" ? "sel" : ""}`} onClick={() => pick("flash")}>
-            THE FLASH
-            <span className="pct">{pct(tally.flash)}% · {tally.flash}</span>
-            <div className="tallybar" style={{ width: `${pct(tally.flash)}%` }} />
-          </div>
-        </div>
-        <div className="qs-pollmeta">
-          <span className={`qs-dot ${connected ? "live" : ""}`} />
-          {connected ? "LIVE" : "connecting…"}
-          <span style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 6 }}>
-            <Users size={13} /> {voters} in the room · {total} votes
-          </span>
-        </div>
-      </div>
-
       <div className="qs-footer">
-        <button className="qs-btn" disabled={!prediction} onClick={onNext}>
-          {prediction ? "TO THE FIGHT" : "PICK A FIGHTER FIRST"} <ChevronRight size={18} />
+        <button className="qs-btn" onClick={onStart}>
+          <Swords size={18} /> START THE SHOW <ChevronRight size={18} />
         </button>
       </div>
     </div>
@@ -423,11 +450,7 @@ function FighterCard({ which }) {
   return (
     <div className={`qs-card ${which}`}>
       <div className={`qs-emblem ${which}`}>
-        {which === "flash" ? (
-          <Zap className="bolt" size={40} color="#0a0a12" fill="#0a0a12" />
-        ) : (
-          <div className="blob" style={{ width: 38, height: 38, background: "#0a0a12", borderRadius: "50% 50% 55% 45%" }} />
-        )}
+        {which === "flash" ? <Zap className="bolt" size={36} color="#0a0a12" fill="#0a0a12" /> : <div className="blob" />}
       </div>
       <h3 className={`qs-name ${which}`}>{f.name}</h3>
       <div className="qs-alias">{f.alias}</div>
@@ -444,204 +467,132 @@ function FighterCard({ which }) {
   );
 }
 
-function Arena({ rounds, fighting, error, momentum, timeLeft, qSample, logRef, onFight, onCollapse }) {
-  const done = rounds.length > 0 && !fighting;
-  const mPct = Math.max(-1, Math.min(1, momentum / Math.max(rounds.length, 1)));
-  const secsLeft = Math.ceil((timeLeft || 0) / 1000);
-  const clockPct = Math.max(0, Math.min(100, ((timeLeft || 0) / FIGHT_DURATION_MS) * 100));
+function Show({ log, activeIdx, phase, readLeft, error, onSkip, onRetry }) {
+  const round = log[activeIdx];
+  const roundNo = activeIdx + 1;
   return (
     <div>
-      <div className="qs-kicker">Multi-Agent Simulation · Live on OpenAI</div>
-      <h2 className="qs-title" style={{ fontSize: 24 }}>THE BOUT · 60 SECONDS</h2>
-      <p className="qs-sub">A Flash agent and a Plastic Man agent each choose their moves in parallel; a Quantum Referee agent narrates and scores every round. They trade blows for one minute — all three run on OpenAI, proxied through the server.</p>
-
-      {rounds.length === 0 && !fighting && (
-        <button className="qs-btn" onClick={onFight}><Activity size={18} /> BEGIN 60-SECOND BOUT</button>
-      )}
-
-      {fighting && (
-        <div className="qs-momentum" style={{ margin: "16px 0 4px" }}>
-          <Timer size={16} color="var(--quantum)" />
-          <div className="track">
-            <div className="fill" style={{ left: 0, width: `${clockPct}%`, background: "var(--quantum)" }} />
-          </div>
-          <span style={{ color: "var(--quantum)", minWidth: 38, textAlign: "right" }}>{secsLeft}s</span>
-        </div>
-      )}
-
-      {error && <div className="qs-err">{error}</div>}
-
-      <div ref={logRef} style={{ maxHeight: 430, overflowY: "auto", marginTop: 18, paddingRight: 4 }}>
-        {rounds.map((r) => (
-          <div className="qs-round" key={r.round}>
-            <div className="rh"><Swords size={14} /> ROUND {r.round} · edge: {r.edge.toUpperCase()}</div>
-            <div className="qs-moves">
-              <div className="qs-move flash"><div className="mv">⚡ {r.flash.move}</div><div className="tt">“{r.flash.taunt}”</div></div>
-              <div className="qs-move plastic"><div className="mv">🫳 {r.pm.move}</div><div className="tt">“{r.pm.taunt}”</div></div>
-            </div>
-            <div className="qs-narr">{r.narration}</div>
-          </div>
-        ))}
-        {fighting && (
-          <div style={{ display: "flex", alignItems: "center", gap: 10, color: "var(--quantum)", fontFamily: "'Space Mono',monospace", fontSize: 13, padding: 12 }}>
-            <Loader2 className="qs-spin" size={16} /> agents deliberating round {rounds.length + 1}…
-          </div>
-        )}
+      <div className="qs-dots">
+        {Array.from({ length: ROUNDS }).map((_, i) => {
+          const done = log[i];
+          const cls = done ? done.edge : "";
+          const cur = i === activeIdx ? "cur" : "";
+          return <div key={i} className={`d ${cls} ${cur}`} />;
+        })}
       </div>
 
-      {qSample && <LiveSuperposition sample={qSample} sampling={fighting} />}
-
-      {rounds.length > 0 && (
-        <>
-          <div className="qs-kicker" style={{ marginTop: 16 }}>Referee's Scorecard · LLM judge, not quantum</div>
-          <div className="qs-momentum" style={{ marginTop: 6 }}>
-            <span style={{ color: "var(--plastic)" }}>PLASTIC</span>
-            <div className="track">
-              <div className="fill" style={{
-                background: mPct >= 0 ? "var(--flash)" : "var(--plastic)",
-                left: mPct >= 0 ? "50%" : `${50 + mPct * 50}%`,
-                width: `${Math.abs(mPct) * 50}%`,
-              }} />
-            </div>
-            <span style={{ color: "var(--flash)" }}>FLASH</span>
+      {error ? (
+        <div style={{ textAlign: "center" }}>
+          <div className="qs-err">{error}</div>
+          <div className="qs-footer">
+            <button className="qs-btn" onClick={onRetry}><Repeat size={16} /> TRY AGAIN</button>
           </div>
-          <div className="qs-edge" style={{ textAlign: "center" }}>
-            Who's landing the better rounds — the verdict still comes down to the qubit.
-          </div>
-        </>
-      )}
-
-      {done && (
-        <div className="qs-footer">
-          <button className="qs-btn ghost" onClick={onFight}><Repeat size={16} /> RE-SIM</button>
-          <button className="qs-btn" onClick={onCollapse}><Atom size={18} /> COLLAPSE THE WAVEFUNCTION</button>
         </div>
+      ) : phase === "clash" || !round ? (
+        <div className="qs-clash">
+          <div className="qs-speedlines" />
+          <div className="roundno">ROUND {roundNo}</div>
+          <div className="arena">
+            <div className="ce l"><div className="blob" style={{ width: 46, height: 46, background: "#0a0a12", borderRadius: "50% 50% 55% 45%" }} /></div>
+            <div className="vsword">FIGHT!</div>
+            <div className="ce r"><Zap size={46} color="#0a0a12" fill="#0a0a12" /></div>
+          </div>
+          <div className="caption"><Loader2 className="qs-spin" size={14} /> the agents are trash-talking…</div>
+        </div>
+      ) : (
+        <RoundPanel round={round} readLeft={readLeft} onSkip={onSkip} last={roundNo === ROUNDS} />
       )}
     </div>
   );
 }
 
-function LiveSuperposition({ sample, sampling }) {
-  const flashPct = Math.round((sample.pFlash ?? 0.5) * 100);
-  const plasticPct = 100 - flashPct;
+function RoundPanel({ round, readLeft, onSkip, last }) {
+  const streak = round.edge === "plastic" ? "var(--plastic)" : round.edge === "flash" ? "var(--flash)" : "#fff";
+  const pct = Math.max(0, Math.min(100, (readLeft / READ_MS) * 100));
+  const secs = Math.ceil(readLeft / 1000);
   return (
-    <div style={{
-      marginTop: 18, padding: "12px 14px", borderRadius: 12,
-      border: "2px solid rgba(31,224,200,.25)", background: "rgba(31,224,200,.05)",
-    }}>
-      <div className="qs-pollmeta" style={{ marginTop: 0, marginBottom: 8 }}>
-        <span className={`qs-dot ${sampling ? "live" : ""}`} />
-        {sampling ? "LIVE" : "LAST SAMPLE"} · OUTCOME IN SUPERPOSITION
-        <span style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 6 }}>
-          <Atom size={13} /> Aer · H→measure · {sample.shots} shots
-        </span>
-      </div>
-      <div style={{ display: "flex", justifyContent: "space-between", fontFamily: "'Space Mono',monospace", fontSize: 13, marginBottom: 6 }}>
-        <span style={{ color: "var(--plastic)" }}>PLASTIC {plasticPct}%</span>
-        <span style={{ color: "var(--flash)" }}>{flashPct}% FLASH</span>
-      </div>
-      {/* track is Plastic; the Flash fill grows from the right with measured P(flash) */}
-      <div style={{ height: 14, background: "var(--plastic)", borderRadius: 8, overflow: "hidden", position: "relative" }}>
-        <div style={{ position: "absolute", top: 0, right: 0, bottom: 0, width: `${flashPct}%`, background: "var(--flash)", transition: "width .5s ease" }} />
-      </div>
-      <div style={{ fontFamily: "'Space Mono',monospace", fontSize: 11, color: "var(--mute)", marginTop: 6 }}>
-        measured {sample.counts?.["0"]} / {sample.counts?.["1"]} (flash/plastic) · stays ~50/50 no matter who's winning — both win until observed. Jitter is real shot noise; resamples on Aer every 1.5s.
-      </div>
-    </div>
-  );
-}
+    // key forces a remount each round so the slam + onomatopoeia animations replay
+    <div className="qs-panel" key={round.round} style={{ "--streak": streak }}>
+      <div className="streaks" />
+      <div className="panel-halftone" />
 
-function Quantum({ collapsing, qSample, error, onMeasure }) {
-  // Real, live Aer sample of the honest Hadamard — sits at ~50/50 with shot
-  // noise. This is the SAME circuit the final measurement collapses.
-  const pFlash = collapsing ? 0.5 : (qSample?.pFlash ?? 0.5);
-  return (
-    <div className={`qs-quantum ${collapsing ? "qs-collapsing" : ""}`}>
-      <div className="qs-kicker">Schrödinger's Showdown</div>
-      <h2 className="qs-title" style={{ fontSize: 24 }}>BOTH WIN — UNTIL OBSERVED</h2>
-      <p className="qs-sub" style={{ margin: "8px auto 0" }}>
-        This debate never resolves — so the outcome lives in honest superposition. A Hadamard gate
-        holds an equal blend of both fighters; measuring the qubit collapses it to a single winner.
-        The brawl was pure theater: it doesn't tip these odds.
-      </p>
+      <div className="qs-fx" style={{ "--fx": FX_COLOR[round.edge] }}>
+        <div className="rays" />
+        <div className="word">{round.fx}</div>
+      </div>
 
-      <div className="qs-qubit">
-        <div className="ring" />
-        <div className="ring b" />
-        <div className="qs-superpos">
-          {collapsing ? <Loader2 className="qs-spin" size={48} color="var(--quantum)" /> : <div className="glyph">|ψ⟩</div>}
+      <div className="rh">
+        <span><Swords size={13} style={{ verticalAlign: "-2px" }} /> ROUND {round.round} OF {ROUNDS}</span>
+        <span>EDGE · {round.edge.toUpperCase()}</span>
+      </div>
+
+      <div className="qs-fighters">
+        <div className="qs-side flash">
+          <div className="who"><Zap size={18} fill="currentColor" /> THE FLASH</div>
+          <div className="qs-move">⚡ {round.flash.move}</div>
+          <div className="bubble">“{round.flash.taunt}”</div>
+        </div>
+        <div className="qs-side plastic">
+          <div className="who">🫳 PLASTIC MAN</div>
+          <div className="qs-move">🫨 {round.pm.move}</div>
+          <div className="bubble">“{round.pm.taunt}”</div>
         </div>
       </div>
 
-      <div className="qs-amp">
-        <div className="col">
-          <div style={{ color: "var(--plastic)" }}>PLASTIC</div>
-          <div className="colbar"><span style={{ height: `${(1 - pFlash) * 100}%`, background: "var(--plastic)" }} /></div>
-          <div>{Math.round((1 - pFlash) * 100)}%</div>
-        </div>
-        <div className="col">
-          <div style={{ color: "var(--flash)" }}>FLASH</div>
-          <div className="colbar"><span style={{ height: `${pFlash * 100}%`, background: "var(--flash)" }} /></div>
-          <div>{Math.round(pFlash * 100)}%</div>
-        </div>
+      <div className="qs-narr">
+        <span className="ref">⚛ QUANTUM REFEREE</span>
+        {round.narration}
       </div>
 
-      {qSample && !collapsing && (
-        <div className="qs-edge">
-          live Aer sample · {qSample.counts?.["0"]} / {qSample.counts?.["1"]} over {qSample.shots} shots · resampling every 1.5s
-        </div>
-      )}
-
-      {error && <div className="qs-err">{error}</div>}
-
-      <div className="qs-footer">
-        <button className="qs-btn" disabled={collapsing} onClick={onMeasure}>
-          {collapsing ? <><Loader2 className="qs-spin" size={18} /> MEASURING…</> : <><Sparkles size={18} /> MEASURE THE QUBIT</>}
+      <div className="qs-read">
+        <div className="track"><div className="fill" style={{ width: `${pct}%` }} /></div>
+        <span className="lab">{last ? "verdict" : "next round"} in {secs}s</span>
+        <button className="qs-btn ghost sm" onClick={onSkip}>
+          <SkipForward size={14} /> {last ? "VERDICT" : "SKIP"}
         </button>
       </div>
-
-      <div className="qs-note">
-        REAL MEASUREMENT. The bars above are a live Aer sample of <code>H→measure</code>; pressing the
-        button calls <code>/api/quantum/collapse</code>, which runs that same single-qubit circuit and
-        takes one shot as the verdict — a genuine 50/50 (plus the comic-book stalemate chance), wholly
-        independent of the fight. Swap the Aer backend for real quantum hardware to decide it on a QPU.
-      </div>
     </div>
   );
 }
 
-function Result({ outcome, prediction, measurement, onReplay }) {
+function Result({ verdict, onReplay }) {
+  if (!verdict) return null;
+  const { winner, closing, score } = verdict;
   const map = {
-    flash: { name: "THE FLASH", color: "var(--flash)", flair: "Speed wins the measurement — Barry catches the one frame where Plastic Man wasn't paying attention." },
-    plastic: { name: "PLASTIC MAN", color: "var(--plastic)", flair: "The indestructible blob simply outlasts everything. You can't beat what refuses to break." },
+    flash: { name: "THE FLASH", color: "var(--flash)", fx: "var(--flash-gold)", flair: "Speed takes it on points — Barry caught the one frame Plastic Man wasn't paying attention." },
+    plastic: { name: "PLASTIC MAN", color: "var(--plastic)", fx: "var(--plastic-gold)", flair: "The indestructible blob simply outlasts everything. You can't beat what refuses to break." },
   };
-  const correct = outcome === prediction;
+  const isStale = winner === "stalemate";
   return (
     <div className="qs-result">
-      <div className="qs-kicker">Wavefunction Collapsed</div>
-      {outcome === "stalemate" ? (
-        <>
-          <Trophy size={44} color="var(--quantum)" style={{ margin: "10px 0" }} />
-          <div className="qs-stalemate">ETERNAL STALEMATE</div>
-          <p className="qs-flair">The honest answer the debate always lands on: Flash can't damage him, Plastic Man can't catch him. They fight forever. The argument continues at lunch tomorrow.</p>
-        </>
+      <div className="qs-kicker">The Final Bell</div>
+
+      <div className="qs-burstwrap" style={{ "--fx": isStale ? "var(--accent)" : map[winner].fx }}>
+        <div className="rays" />
+        <Trophy size={64} color={isStale ? "var(--accent)" : map[winner].color} style={{ position: "relative", zIndex: 2 }} />
+      </div>
+
+      {isStale ? (
+        <div className="qs-stale">ETERNAL<br />STALEMATE</div>
       ) : (
-        <>
-          <Trophy size={44} color={map[outcome].color} style={{ margin: "10px 0" }} />
-          <div className="qs-winner" style={{ color: map[outcome].color }}>{map[outcome].name} WINS</div>
-          <p className="qs-flair">{map[outcome].flair}</p>
-          <p className="qs-flair" style={{ color: correct ? "var(--quantum)" : "var(--mute)" }}>
-            {correct ? "✓ Your prediction was correct. Collect your bragging rights." : `✗ You backed ${prediction === "flash" ? "the Flash" : "Plastic Man"}. The qubit disagreed.`}
-          </p>
-        </>
+        <div className="qs-winner" style={{ color: map[winner].color }}>{map[winner].name}<br />WINS</div>
       )}
-      {measurement && (
-        <div className="qs-note" style={{ display: "inline-block", textAlign: "left", marginTop: 18 }}>
-          QISKIT · {measurement.backend} · circuit: {measurement.circuit}<br />
-          measured bit |{measurement.bit}⟩ over {measurement.shots} shots →
-          counts {JSON.stringify(measurement.counts)}
-        </div>
-      )}
+
+      <p className="qs-flair">
+        {isStale
+          ? "The honest answer the debate always lands on: the Flash can't damage him, Plastic Man can't catch him. They fight forever. The argument resumes at lunch tomorrow."
+          : map[winner].flair}
+      </p>
+
+      <div className="qs-verdict">
+        <span className="ref">⚛ QUANTUM REFEREE · FINAL CALL</span>
+        <span className="line">“{closing}”</span>
+      </div>
+
+      <div className="qs-flair" style={{ fontFamily: "'Space Mono',monospace", fontSize: 12 }}>
+        scorecard — Flash {score.flash} · Plastic {score.plastic} · even {score.even}
+      </div>
+
       <div className="qs-footer">
         <button className="qs-btn" onClick={onReplay}><Repeat size={16} /> RUN IT BACK</button>
       </div>

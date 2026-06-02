@@ -15,6 +15,9 @@ server/quantum/.venv/
 __pycache__/
 *.pyc
 
+# editor / tooling
+.claude/
+
 # logs & os cruft
 *.log
 npm-debug.log*
