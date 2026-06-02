@@ -1,0 +1,22 @@
+# dependencies
+node_modules/
+
+# env / secrets
+.env
+.env.*
+!.env.example
+
+# build output
+dist/
+dist-ssr/
+
+# python / qiskit venv
+server/quantum/.venv/
+__pycache__/
+*.pyc
+
+# logs & os cruft
+*.log
+npm-debug.log*
+.DS_Store
+.vite/

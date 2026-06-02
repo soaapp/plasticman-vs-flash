@@ -1,0 +1,30 @@
+{
+  "name": "plasticman-vs-flash",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Plastic Man vs The Flash — Schrödinger's Showdown. Vite + React front end with an Express backend that proxies OpenAI, runs a Qiskit Hadamard-and-measure collapse, and hosts a live WebSocket poll.",
+  "scripts": {
+    "dev": "concurrently -n web,api -c cyan,magenta \"npm:dev:web\" \"npm:dev:api\"",
+    "dev:web": "vite",
+    "dev:api": "node --watch server/index.js",
+    "server": "node server/index.js",
+    "setup:quantum": "python3.11 -m venv server/quantum/.venv && server/quantum/.venv/bin/python -m pip install -q --upgrade pip && server/quantum/.venv/bin/python -m pip install -q -r server/quantum/requirements.txt",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "lucide-react": "^0.469.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "concurrently": "^9.1.2",
+    "vite": "^6.0.7"
+  }
+}
