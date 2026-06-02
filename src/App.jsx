@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Zap, Atom, Trophy, Repeat, ChevronRight, Loader2, Activity, Sparkles, Swords, Users } from "lucide-react";
+import { Zap, Atom, Trophy, Repeat, ChevronRight, Loader2, Activity, Sparkles, Swords, Users, Timer } from "lucide-react";
 import { callAgent, parseJSON, collapseWavefunction } from "./api.js";
 import { usePoll } from "./usePoll.js";
 
@@ -172,7 +172,8 @@ const PM_SYS = `You are Eel O'Brian, PLASTIC MAN, in a comedic comic-book battle
 
 const JUDGE_SYS = `You are the QUANTUM REFEREE narrating a Flash vs Plastic Man bout for a hackathon crowd. Given both fighters' moves this round, write vivid, funny play-by-play — 2 sentences max, about 40 words. Then judge who edged the round. Core running joke: the Flash cannot actually damage the indestructible, rubbery Plastic Man, and can never catch or pin him either — so lean into glorious stalemate energy and absurd comedy. Respond with ONLY minified JSON, no markdown: {"narration":"...","edge":"flash"|"plastic"|"even"}`;
 
-const ROUNDS = 4;
+const FIGHT_DURATION_MS = 60_000; // the bout runs for ~one minute
+const MAX_ROUNDS = 40; // safety cap so a slow/looping API can't run away
 
 /* ----------------------------- data ------------------------------- */
 const FIGHTERS = {
@@ -200,6 +201,7 @@ export default function App() {
   const [collapsing, setCollapsing] = useState(false);
   const [outcome, setOutcome] = useState(null); // 'flash' | 'plastic' | 'stalemate'
   const [measurement, setMeasurement] = useState(null); // raw quantum result for display
+  const [timeLeft, setTimeLeft] = useState(FIGHT_DURATION_MS); // ms remaining in the bout
   const logRef = useRef(null);
   const poll = usePoll();
 
@@ -214,14 +216,24 @@ export default function App() {
     setError(null);
     setRounds([]);
     const history = [];
+    const deadline = Date.now() + FIGHT_DURATION_MS;
+    setTimeLeft(FIGHT_DURATION_MS);
+    // tick the on-screen countdown while the bout runs
+    const ticker = setInterval(() => setTimeLeft(Math.max(0, deadline - Date.now())), 250);
     try {
-      for (let i = 1; i <= ROUNDS; i++) {
+      let i = 0;
+      // Keep starting fresh rounds until the minute is up (the in-flight round
+      // finishes, so the bell may ring a beat past 0). MAX_ROUNDS is a backstop.
+      while (Date.now() < deadline && i < MAX_ROUNDS) {
+        i++;
+        const secsLeft = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+        const clock = `~${secsLeft}s left on the clock.`;
         const summary = history.length
           ? history.slice(-2).map((h) => `R${h.round}: ${h.narration}`).join(" ")
           : "The bell just rang; the bout has begun.";
         const [fRaw, pRaw] = await Promise.all([
-          callAgent(FLASH_SYS, `Round ${i} of ${ROUNDS}. Fight so far: ${summary}\nChoose your move now.`),
-          callAgent(PM_SYS, `Round ${i} of ${ROUNDS}. Fight so far: ${summary}\nChoose your move now.`),
+          callAgent(FLASH_SYS, `Round ${i}. ${clock} Fight so far: ${summary}\nChoose your move now.`),
+          callAgent(PM_SYS, `Round ${i}. ${clock} Fight so far: ${summary}\nChoose your move now.`),
         ]);
         const flash = parseJSON(fRaw, { move: "Sonic Blitz", taunt: "Too slow, stretch!" });
         const pm = parseJSON(pRaw, { move: "Rubber Rebound", taunt: "Boing! Missed me again!" });
@@ -240,6 +252,8 @@ export default function App() {
     } catch (e) {
       setError("The agents hit a snag reaching the OpenAI API. Check the server logs / API key and run the simulation again.");
     } finally {
+      clearInterval(ticker);
+      setTimeLeft(0);
       setFighting(false);
     }
   }
@@ -290,6 +304,7 @@ export default function App() {
             fighting={fighting}
             error={error}
             momentum={momentum}
+            timeLeft={timeLeft}
             logRef={logRef}
             onFight={runFight}
             onCollapse={() => setScene("quantum")}
@@ -409,17 +424,29 @@ function FighterCard({ which }) {
   );
 }
 
-function Arena({ rounds, fighting, error, momentum, logRef, onFight, onCollapse }) {
-  const done = rounds.length >= ROUNDS && !fighting;
-  const mPct = Math.max(-1, Math.min(1, momentum / ROUNDS));
+function Arena({ rounds, fighting, error, momentum, timeLeft, logRef, onFight, onCollapse }) {
+  const done = rounds.length > 0 && !fighting;
+  const mPct = Math.max(-1, Math.min(1, momentum / Math.max(rounds.length, 1)));
+  const secsLeft = Math.ceil((timeLeft || 0) / 1000);
+  const clockPct = Math.max(0, Math.min(100, ((timeLeft || 0) / FIGHT_DURATION_MS) * 100));
   return (
     <div>
       <div className="qs-kicker">Multi-Agent Simulation · Live on OpenAI</div>
-      <h2 className="qs-title" style={{ fontSize: 24 }}>THE BOUT</h2>
-      <p className="qs-sub">A Flash agent and a Plastic Man agent each choose their moves in parallel; a Quantum Referee agent narrates and scores every round. All three run on OpenAI, proxied through the server.</p>
+      <h2 className="qs-title" style={{ fontSize: 24 }}>THE BOUT · 60 SECONDS</h2>
+      <p className="qs-sub">A Flash agent and a Plastic Man agent each choose their moves in parallel; a Quantum Referee agent narrates and scores every round. They trade blows for one minute — all three run on OpenAI, proxied through the server.</p>
 
       {rounds.length === 0 && !fighting && (
-        <button className="qs-btn" onClick={onFight}><Activity size={18} /> BEGIN SIMULATION</button>
+        <button className="qs-btn" onClick={onFight}><Activity size={18} /> BEGIN 60-SECOND BOUT</button>
+      )}
+
+      {fighting && (
+        <div className="qs-momentum" style={{ margin: "16px 0 4px" }}>
+          <Timer size={16} color="var(--quantum)" />
+          <div className="track">
+            <div className="fill" style={{ left: 0, width: `${clockPct}%`, background: "var(--quantum)" }} />
+          </div>
+          <span style={{ color: "var(--quantum)", minWidth: 38, textAlign: "right" }}>{secsLeft}s</span>
+        </div>
       )}
 
       {error && <div className="qs-err">{error}</div>}
