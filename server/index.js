@@ -17,7 +17,7 @@ app.post("/api/chat", async (req, res) => {
   if (!OPENAI_API_KEY || OPENAI_API_KEY.includes("REPLACE_ME")) {
     return res.status(500).json({ error: "OPENAI_API_KEY is not set in .env" });
   }
-  const { system, user, model, max_tokens } = req.body || {};
+  const { system, user, model, max_tokens, tools, tool_choice } = req.body || {};
   if (typeof user !== "string" || !user.trim()) {
     return res.status(400).json({ error: "Missing 'user' message" });
   }
@@ -37,6 +37,11 @@ app.post("/api/chat", async (req, res) => {
     if (/^gpt-5/.test(chosenModel)) {
       payload.reasoning_effort = "minimal";
     }
+    // Tool-calling: forward the agent's tool schema so the model invokes a power.
+    if (Array.isArray(tools) && tools.length) {
+      payload.tools = tools;
+      payload.tool_choice = tool_choice || "auto";
+    }
 
     const upstream = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
@@ -52,8 +57,13 @@ app.post("/api/chat", async (req, res) => {
       console.error("OpenAI error", upstream.status, data);
       return res.status(upstream.status).json({ error: data?.error?.message || "OpenAI API error" });
     }
-    const text = data.choices?.[0]?.message?.content || "";
-    res.json({ text });
+    const msg = data.choices?.[0]?.message || {};
+    res.json({
+      text: msg.content || "",
+      tool_calls: msg.tool_calls || null,
+      usage: data.usage || null,
+      model: data.model || chosenModel,
+    });
   } catch (err) {
     console.error("OpenAI proxy failed:", err);
     res.status(502).json({ error: "Failed to reach the OpenAI API" });

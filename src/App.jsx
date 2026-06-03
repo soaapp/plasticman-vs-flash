@@ -1,13 +1,15 @@
 import React, { useState, useRef, useEffect } from "react";
-import { Zap, Swords, ChevronRight, Repeat, Loader2, Trophy, SkipForward, BookOpen } from "lucide-react";
-import { callAgent, parseJSON } from "./api.js";
+import { Zap, Swords, ChevronRight, Repeat, Loader2, Trophy, SkipForward, BookOpen, Volume2, VolumeX, Cpu } from "lucide-react";
+import { runFighter, runReferee, closingCall, AGENT_META } from "./agents.js";
+import { narrator } from "./narrator.js";
 
 /* ------------------------------------------------------------------ *
  *  PLASTIC MAN  vs  THE FLASH  —  a comic-book agent showdown
- *  - A Flash agent and a Plastic Man agent trash-talk and trade moves
- *  - A Quantum Referee agent calls each round, live on the OpenAI API
- *  - Played as a paced 5-round SHOW: each round slams in as a comic panel
- *    with a giant POW/BOOM, speech-bubble taunts, and a 10s read window
+ *  - A Flash agent and a Plastic Man agent choose moves via real OpenAI
+ *    TOOL CALLS (their powers are function tools); a Quantum Referee agent
+ *    scores each round with a score_round tool. See src/agents.js.
+ *  - Played as a paced 3-round SHOW with a live agent-flow trace, comic
+ *    panels (POW/BOOM, speech bubbles), and in-browser narration.
  * ------------------------------------------------------------------ */
 
 const CSS = `
@@ -266,17 +268,79 @@ const CSS = `
 .qs-dossier.flash .clash-who { color:var(--flash); }
 .qs-dossier.plastic .clash-who { color:var(--plastic); }
 @media (max-width:520px){ .clash-row{ grid-template-columns:1fr; gap:2px; } }
+
+/* ---------- narration toggle ---------- */
+.qs-narrtoggle { position:fixed; top:16px; right:16px; z-index:40; width:42px; height:42px; border-radius:50%;
+  border:2px solid #000; background:var(--panel); color:var(--mute); cursor:pointer; display:grid; place-items:center;
+  box-shadow:0 4px 0 rgba(0,0,0,.5); transition: color .15s ease, transform .08s ease, box-shadow .15s ease; }
+.qs-narrtoggle.on { color:var(--accent); box-shadow:0 4px 0 rgba(0,0,0,.5), 0 0 16px rgba(31,224,200,.4); }
+.qs-narrtoggle:active { transform:translateY(2px); box-shadow:0 2px 0 rgba(0,0,0,.5); }
+
+/* ---------- live agent flow ---------- */
+.flow-kicker { font-family:'Space Mono',monospace; letter-spacing:.16em; font-size:11px; color:var(--accent);
+  display:flex; align-items:center; gap:7px; }
+.qs-flow { display:flex; align-items:center; justify-content:center; gap:14px; flex-wrap:wrap; width:100%; max-width:780px; }
+.flow-col { display:flex; flex-direction:column; gap:6px; align-items:stretch; }
+.flow-par { font-family:'Space Mono',monospace; font-size:10px; color:var(--mute); text-align:center; letter-spacing:.12em; }
+.flow-arrow { font-family:'Bangers'; font-size:28px; color:var(--mute); }
+.flow-verdict { font-family:'Bangers'; font-size:22px; color:var(--paper); border:3px dashed rgba(255,255,255,.2);
+  border-radius:12px; padding:14px 18px; }
+.flow-node { min-width:212px; text-align:left; border:2px solid #000; border-radius:12px; padding:10px 12px;
+  background:linear-gradient(160deg,#16121f,#0b0b14); box-shadow:5px 5px 0 rgba(0,0,0,.5);
+  transition: box-shadow .2s ease, opacity .2s ease; }
+.flow-node.flash { border-left:5px solid var(--flash); }
+.flow-node.plastic { border-left:5px solid var(--plastic); }
+.flow-node.referee { border-left:5px solid var(--accent); }
+.flow-node.idle { opacity:.55; }
+.flow-node.running { animation: nodePulse 1.1s ease-in-out infinite; }
+@keyframes nodePulse { 0%,100%{ box-shadow:5px 5px 0 rgba(0,0,0,.5); } 50%{ box-shadow:5px 5px 0 rgba(0,0,0,.5), 0 0 22px rgba(31,224,200,.35); } }
+.fn-head { display:flex; align-items:center; gap:7px; font-family:'Bangers'; letter-spacing:.02em; font-size:16px; }
+.flow-node.flash .fn-head { color:var(--flash); }
+.flow-node.plastic .fn-head { color:var(--plastic); }
+.flow-node.referee .fn-head { color:var(--accent); }
+.fn-dot { width:8px; height:8px; border-radius:50%; background:var(--mute); flex:none; }
+.flow-node.running .fn-dot { background:var(--flash-gold); box-shadow:0 0 8px var(--flash-gold); animation: dotPulse 1s infinite; }
+.flow-node.done .fn-dot { background:#39d98a; box-shadow:0 0 8px #39d98a; }
+.fn-name { white-space:nowrap; }
+.fn-line { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-top:6px;
+  font-family:'Space Mono',monospace; font-size:11px; color:var(--mute); }
+.fn-line.dim { opacity:.6; }
+.fn-tool { display:inline-block; margin-top:7px; font-family:'Space Mono',monospace; font-size:12px; color:var(--paper);
+  background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.12); border-radius:6px; padding:2px 7px; }
+.guard { font-family:'Space Mono',monospace; font-size:10px; padding:1px 6px; border-radius:5px; white-space:nowrap; }
+.guard.ok { color:#39d98a; background:rgba(57,217,138,.13); }
+.guard.warn { color:var(--flash-gold); background:rgba(255,210,0,.13); }
+.guard.bad { color:var(--flash); background:rgba(238,28,37,.15); }
+@media (max-width:680px){ .flow-arrow{ transform:rotate(90deg); } .flow-node{ min-width:0; width:100%; } .qs-flow{ max-width:340px; } }
+
+/* ---------- agent trace on the panel ---------- */
+.qs-trace { position:relative; z-index:2; margin-top:14px; }
+.qs-tracetoggle { width:100%; text-align:left; cursor:pointer; background:rgba(255,255,255,.04);
+  border:1px solid rgba(255,255,255,.12); border-radius:9px; padding:9px 12px; color:var(--accent);
+  font-family:'Space Mono',monospace; font-size:12px; letter-spacing:.08em; display:flex; align-items:center; gap:8px; }
+.qs-tracetoggle:hover { background:rgba(255,255,255,.08); }
+.qs-tracetoggle .caret { margin-left:auto; }
+.qs-tracebody { margin-top:8px; display:flex; flex-direction:column; gap:8px; }
+.trace-row { border:1px solid rgba(255,255,255,.1); border-left-width:4px; border-radius:8px; padding:8px 10px; background:rgba(0,0,0,.28); }
+.trace-row.flash { border-left-color:var(--flash); }
+.trace-row.plastic { border-left-color:var(--plastic); }
+.trace-row.referee { border-left-color:var(--accent); }
+.tr-head { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.tr-agent { font-family:'Bangers'; letter-spacing:.03em; font-size:15px; }
+.trace-row.flash .tr-agent { color:var(--flash); }
+.trace-row.plastic .tr-agent { color:var(--plastic); }
+.trace-row.referee .tr-agent { color:var(--accent); }
+.tr-metrics { font-family:'Space Mono',monospace; font-size:11px; color:var(--mute); display:flex; align-items:center; gap:7px; }
+.tr-call { display:block; margin-top:6px; font-family:'Space Mono',monospace; font-size:12px; color:var(--paper);
+  background:rgba(255,255,255,.05); border-radius:6px; padding:6px 8px; word-break:break-word; }
 `;
 
-/* ----------------------------- agents ----------------------------- */
-const FLASH_SYS = `You are Barry Allen, THE FLASH, in a comedic comic-book battle simulation against Plastic Man. You are the fastest man alive — light-speed movement, phasing through matter, the infinite mass punch, speed-stealing and the occasional time trick. You're confident, a little cocky, heroic, and very funny. Given the fight state, pick ONE move (2-4 punchy words) and a cocky, joke-filled taunt (max 16 words). Respond with ONLY minified JSON, no markdown: {"move":"...","taunt":"..."}`;
-
-const PM_SYS = `You are Eel O'Brian, PLASTIC MAN, in a comedic comic-book battle simulation against the Flash. You are infinitely malleable, basically indestructible, you shapeshift into anything, regenerate from being shattered, and you're a total goofball who knows he can't really be hurt. Given the fight state, pick ONE move (2-4 silly words) and a goofy, pun-filled taunt (max 16 words). Respond with ONLY minified JSON, no markdown: {"move":"...","taunt":"..."}`;
-
-const JUDGE_SYS = `You are the QUANTUM REFEREE narrating a Flash vs Plastic Man bout for a hyped lunchtime crowd. Given both fighters' moves this round, write vivid, hilarious play-by-play — 2 to 3 sentences, about 50 words, packed with jokes. Then judge who edged the round. Core running joke: the Flash cannot actually damage the indestructible, rubbery Plastic Man, and can never catch or pin him either — so lean into glorious stalemate energy and absurd comedy. Respond with ONLY minified JSON, no markdown: {"narration":"...","edge":"flash"|"plastic"|"even"}`;
-
+/* ----------------------------- config ----------------------------- */
 const ROUNDS = 3;
 const READ_MS = 60_000; // ~1 minute per round so the crowd can savor the quips
+const MIN_CLASH_MS = 4200; // hold the live agent-flow on screen long enough to read
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /* comic onomatopoeia, chosen by who edged the round */
 const FX = {
@@ -355,18 +419,31 @@ export default function App() {
   const [readLeft, setReadLeft] = useState(READ_MS);
   const [verdict, setVerdict] = useState(null); // { winner, closing, score }
   const [error, setError] = useState(null);
+  const [agents, setAgents] = useState({ flash: null, plastic: null, referee: null }); // live telemetry
+  const [narrate, setNarrate] = useState(true);
   const skipRef = useRef(false);
-  const runningRef = useRef(false);
+  const runIdRef = useRef(0); // epoch: bumping it cancels any in-flight show loop
+  const narrateRef = useRef(true);
 
-  // a 10s read window that can be cut short with the SKIP button
-  function waitRead(ms) {
+  function toggleNarrate() {
+    setNarrate((v) => {
+      const nv = !v;
+      narrateRef.current = nv;
+      if (!nv) narrator.cancel();
+      return nv;
+    });
+  }
+
+  // The read window (skippable). Resolves when time's up, SKIP is pressed, or a
+  // newer show run has started (alive() goes false).
+  function waitRead(ms, alive) {
     return new Promise((resolve) => {
       const start = Date.now();
       setReadLeft(ms);
       const id = setInterval(() => {
         const left = Math.max(0, ms - (Date.now() - start));
         setReadLeft(left);
-        if (left <= 0 || skipRef.current) {
+        if (left <= 0 || skipRef.current || !alive()) {
           clearInterval(id);
           skipRef.current = false;
           resolve();
@@ -376,44 +453,70 @@ export default function App() {
   }
 
   async function runShow() {
-    if (runningRef.current) return;
-    runningRef.current = true;
+    const myRun = ++runIdRef.current; // claim this epoch
+    const alive = () => runIdRef.current === myRun; // false once a newer run starts
     setScene("show");
     setLog([]);
     setVerdict(null);
     setError(null);
     skipRef.current = false;
+    narrator.cancel();
     const history = [];
     try {
       for (let i = 1; i <= ROUNDS; i++) {
+        if (!alive()) return;
+        narrator.cancel();
+        const clashStart = Date.now();
         setActiveIdx(i - 1);
-        setPhase("clash"); // the clash animation covers the generation latency
+        setPhase("clash"); // the clash + live agent flow cover the generation latency
+        setAgents({ flash: { status: "running" }, plastic: { status: "running" }, referee: { status: "idle" } });
+
         const summary = history.length
           ? history.slice(-2).map((h) => `R${h.round}: ${h.narration}`).join(" ")
           : "The bell just rang; the bout has begun.";
-        const [fRaw, pRaw] = await Promise.all([
-          callAgent(FLASH_SYS, `Round ${i} of ${ROUNDS}. Fight so far: ${summary}\nChoose your move now.`),
-          callAgent(PM_SYS, `Round ${i} of ${ROUNDS}. Fight so far: ${summary}\nChoose your move now.`),
-        ]);
-        const flash = parseJSON(fRaw, { move: "Sonic Blitz", taunt: "Too slow, stretch! I lapped you twice already." });
-        const pm = parseJSON(pRaw, { move: "Rubber Rebound", taunt: "Boing! Missed me — try again in a millennium, speedy!" });
-        const jRaw = await callAgent(
-          JUDGE_SYS,
-          `Round ${i}.\nFlash used "${flash.move}" (taunt: "${flash.taunt}").\nPlastic Man used "${pm.move}" (taunt: "${pm.taunt}").\nNarrate and judge the round.`
+        const fightState = `Round ${i} of ${ROUNDS}. Fight so far: ${summary}\nMake your move now.`;
+
+        // Both fighter agents run in parallel; mark each done as it resolves so
+        // the live flow diagram lights up node-by-node.
+        const flashP = runFighter("flash", fightState).then((r) => { if (alive()) setAgents((a) => ({ ...a, flash: { ...r, status: "done" } })); return r; });
+        const pmP = runFighter("plastic", fightState).then((r) => { if (alive()) setAgents((a) => ({ ...a, plastic: { ...r, status: "done" } })); return r; });
+        const [flash, pm] = await Promise.all([flashP, pmP]);
+        if (!alive()) return;
+
+        // The referee agent scores the round (its own tool call).
+        setAgents((a) => ({ ...a, referee: { status: "running" } }));
+        const ref = await runReferee(
+          `Round ${i}. Flash used "${flash.move}" (taunt: "${flash.taunt}"). Plastic Man used "${pm.move}" (taunt: "${pm.taunt}"). Call the round.`
         );
-        const judge = parseJSON(jRaw, {
-          narration: `The Flash unloads ${flash.move} at blinding speed — and Plastic Man simply jiggles, absorbs it, snaps back into shape, and grins. Nobody is closer to winning. The crowd loves it.`,
-          edge: "even",
-        });
-        const edge = ["flash", "plastic", "even"].includes(judge.edge) ? judge.edge : "even";
-        const entry = { round: i, flash, pm, narration: judge.narration, edge, fx: pickFx(edge, i) };
+        if (!alive()) return;
+        setAgents((a) => ({ ...a, referee: { ...ref, status: "done" } }));
+
+        const edge = ref.edge;
+        const entry = {
+          round: i, flash, pm, narration: ref.narration, edge,
+          fx: pickFx(edge, i),
+          trace: [flash, pm, ref], // tool-call telemetry for the expandable panel
+        };
         history.push(entry);
+        // Hold the fully-resolved flow diagram briefly so the live tool calls
+        // (and their latency/tokens/guardrails) are readable before the reveal.
+        const elapsed = Date.now() - clashStart;
+        if (elapsed < MIN_CLASH_MS) await sleep(MIN_CLASH_MS - elapsed);
+        if (!alive()) return;
+
         setLog((l) => [...l, entry]);
         setPhase("reveal");
-        await waitRead(READ_MS);
+
+        if (narrateRef.current) {
+          narrator.speak(flash.taunt, "flash");
+          narrator.speak(pm.taunt, "plastic");
+          narrator.speak(ref.narration, "referee");
+        }
+        await waitRead(READ_MS, alive);
+        if (!alive()) return;
       }
 
-      // verdict from the referee's scorecard — no quantum, lean into the gag
+      // verdict from the referee's scorecard — lean into the stalemate gag
       const score = history.reduce(
         (a, r) => ({ ...a, [r.edge]: a[r.edge] + 1 }),
         { flash: 0, plastic: 0, even: 0 }
@@ -427,34 +530,29 @@ export default function App() {
           : winner === "flash"
           ? "The Flash edges it on points — by the only frame Plastic Man wasn't paying attention!"
           : "Plastic Man bounces away with it — you simply cannot beat what refuses to break!";
-      let closing = fallbackClose;
-      try {
-        const cRaw = await callAgent(
-          JUDGE_SYS,
-          `The ${ROUNDS}-round bout is over. Flash edged ${score.flash}, Plastic Man edged ${score.plastic}, ${score.even} even. The verdict is ${
-            winner === "stalemate" ? "an ETERNAL STALEMATE" : winner.toUpperCase() + " takes it on points"
-          }. Give ONE punchy, funny closing call for the crowd (max 24 words). Respond with ONLY minified JSON: {"line":"..."}`
-        );
-        closing = parseJSON(cRaw, { line: fallbackClose }).line || fallbackClose;
-      } catch (e) {
-        /* keep fallback */
-      }
+      const verdictLine = winner === "stalemate" ? "an ETERNAL STALEMATE" : winner.toUpperCase() + " takes it on points";
+      const closing =
+        (await closingCall(`The ${ROUNDS}-round bout is over. Flash edged ${score.flash}, Plastic Man edged ${score.plastic}, ${score.even} even. The verdict: ${verdictLine}.`)) ||
+        fallbackClose;
+      if (!alive()) return;
 
       setVerdict({ winner, closing, score });
+      if (narrateRef.current) narrator.speak(closing, "referee");
       setScene("result");
     } catch (e) {
-      setError("The agents hit a snag reaching the OpenAI API. Check the server / API key and run it again.");
-    } finally {
-      runningRef.current = false;
+      if (alive()) setError("The agents hit a snag reaching the OpenAI API. Check the server / API key and run it again.");
     }
   }
 
   function reset() {
+    runIdRef.current++; // cancel any in-flight show loop
+    narrator.cancel();
     setScene("intro");
     setLog([]);
     setActiveIdx(-1);
     setVerdict(null);
     setError(null);
+    setAgents({ flash: null, plastic: null, referee: null });
   }
 
   return (
@@ -470,7 +568,10 @@ export default function App() {
             phase={phase}
             readLeft={readLeft}
             error={error}
-            onSkip={() => { skipRef.current = true; }}
+            agents={agents}
+            narrate={narrate}
+            onToggleNarrate={toggleNarrate}
+            onSkip={() => { skipRef.current = true; narrator.cancel(); }}
             onRetry={runShow}
           />
         )}
@@ -607,11 +708,20 @@ function Dossier({ which, onClose }) {
   );
 }
 
-function Show({ log, activeIdx, phase, readLeft, error, onSkip, onRetry }) {
+function Show({ log, activeIdx, phase, readLeft, error, agents, narrate, onToggleNarrate, onSkip, onRetry }) {
   const round = log[activeIdx];
   const roundNo = activeIdx + 1;
   return (
     <div>
+      <button
+        className={`qs-narrtoggle ${narrate ? "on" : ""}`}
+        onClick={onToggleNarrate}
+        title={narrate ? "Mute narration" : "Unmute narration"}
+        aria-label="Toggle narration"
+      >
+        {narrate ? <Volume2 size={16} /> : <VolumeX size={16} />}
+      </button>
+
       <div className="qs-dots">
         {Array.from({ length: ROUNDS }).map((_, i) => {
           const done = log[i];
@@ -629,16 +739,7 @@ function Show({ log, activeIdx, phase, readLeft, error, onSkip, onRetry }) {
           </div>
         </div>
       ) : phase === "clash" || !round ? (
-        <div className="qs-clash">
-          <div className="qs-speedlines" />
-          <div className="roundno">ROUND {roundNo}</div>
-          <div className="arena">
-            <div className="ce l"><div className="blob" style={{ width: 46, height: 46, background: "#0a0a12", borderRadius: "50% 50% 55% 45%" }} /></div>
-            <div className="vsword">FIGHT!</div>
-            <div className="ce r"><Zap size={46} color="#0a0a12" fill="#0a0a12" /></div>
-          </div>
-          <div className="caption"><Loader2 className="qs-spin" size={14} /> the agents are trash-talking…</div>
-        </div>
+        <AgentFlow agents={agents} roundNo={roundNo} />
       ) : (
         <RoundPanel round={round} readLeft={readLeft} onSkip={onSkip} last={roundNo === ROUNDS} />
       )}
@@ -646,7 +747,76 @@ function Show({ log, activeIdx, phase, readLeft, error, onSkip, onRetry }) {
   );
 }
 
+/* The live multi-agent flow shown during the "clash" beat: the two fighter
+ * agents fire in parallel, then the referee — nodes light up as real tool
+ * calls resolve, each showing the tool invoked, latency, tokens, guardrail. */
+function AgentFlow({ agents, roundNo }) {
+  const allDone = ["flash", "plastic", "referee"].every((k) => agents[k]?.status === "done");
+  return (
+    <div className="qs-clash">
+      <div className="qs-speedlines" />
+      <div className="roundno">ROUND {roundNo}</div>
+      <div className="flow-kicker"><Cpu size={13} /> MULTI-AGENT ORCHESTRATION · LIVE TOOL CALLS</div>
+      <div className="qs-flow">
+        <div className="flow-col">
+          <AgentNode role="flash" data={agents.flash} />
+          <span className="flow-par">∥ parallel</span>
+          <AgentNode role="plastic" data={agents.plastic} />
+        </div>
+        <div className="flow-arrow">→</div>
+        <AgentNode role="referee" data={agents.referee} />
+        <div className="flow-arrow">→</div>
+        <div className="flow-verdict">VERDICT</div>
+      </div>
+      <div className="caption">
+        {allDone ? <>resolving the panel…</> : <><Loader2 className="qs-spin" size={14} /> agents calling their power tools…</>}
+      </div>
+    </div>
+  );
+}
+
+function AgentNode({ role, data }) {
+  const meta = AGENT_META[role];
+  const status = data?.status || "idle";
+  const icon = role === "flash" ? <Zap size={13} fill="currentColor" /> : role === "plastic" ? <span>🫳</span> : <span>⚛</span>;
+  return (
+    <div className={`flow-node ${role} ${status}`}>
+      <div className="fn-head"><span className="fn-dot" />{icon}<span className="fn-name">{meta.name}</span></div>
+      {status === "idle" && <div className="fn-line dim">queued</div>}
+      {status === "running" && <div className="fn-line"><Loader2 className="qs-spin" size={11} /> calling tool…</div>}
+      {status === "done" && data?.tool && (
+        <>
+          <code className="fn-tool">{data.tool}()</code>
+          <div className="fn-line"><span>{data.ms}ms · {data.tokens ?? "—"} tok</span><GuardBadge guard={data.guard} /></div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function GuardBadge({ guard }) {
+  const map = { ok: ["✓ ok", "ok"], coerced: ["⚠ coerced", "warn"], fallback: ["✗ fallback", "bad"] };
+  const [label, cls] = map[guard] || map.ok;
+  return <span className={`guard ${cls}`} title="output guardrail">{label}</span>;
+}
+
+function TraceRow({ t }) {
+  const args = t.role === "referee"
+    ? `narration: "…", edge: "${t.edge}"`
+    : Object.entries(t.args || {}).map(([k, v]) => `${k}: ${JSON.stringify(v)}`).join(", ");
+  return (
+    <div className={`trace-row ${t.role}`}>
+      <div className="tr-head">
+        <span className="tr-agent">{t.agent}</span>
+        <span className="tr-metrics">{t.ms}ms · {t.tokens ?? "—"} tok <GuardBadge guard={t.guard} /></span>
+      </div>
+      <code className="tr-call">{t.tool}({args})</code>
+    </div>
+  );
+}
+
 function RoundPanel({ round, readLeft, onSkip, last }) {
+  const [traceOpen, setTraceOpen] = useState(false);
   const streak = round.edge === "plastic" ? "var(--plastic)" : round.edge === "flash" ? "var(--flash)" : "#fff";
   const pct = Math.max(0, Math.min(100, (readLeft / READ_MS) * 100));
   const secs = Math.ceil(readLeft / 1000);
@@ -682,6 +852,17 @@ function RoundPanel({ round, readLeft, onSkip, last }) {
       <div className="qs-narr">
         <span className="ref">⚛ QUANTUM REFEREE</span>
         {round.narration}
+      </div>
+
+      <div className="qs-trace">
+        <button className="qs-tracetoggle" onClick={() => setTraceOpen((o) => !o)} aria-expanded={traceOpen}>
+          <Cpu size={13} /> AGENT TRACE — {round.trace.length} tool calls <span className="caret">{traceOpen ? "▲" : "▼"}</span>
+        </button>
+        {traceOpen && (
+          <div className="qs-tracebody">
+            {round.trace.map((t, i) => <TraceRow key={i} t={t} />)}
+          </div>
+        )}
       </div>
 
       <div className="qs-read">
