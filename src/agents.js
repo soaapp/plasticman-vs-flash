@@ -2,10 +2,11 @@ import { chat } from "./api.js";
 
 /* ------------------------------------------------------------------ *
  *  The multi-agent layer. Each fighter's POWERS are real OpenAI
- *  function tools; the model must invoke exactly one to choose a move
- *  (tool_choice: "required"). The Referee invokes a score_round tool.
- *  runFighter/runReferee wrap each call with guardrails and return rich
- *  telemetry (tool, args, latency, tokens, guardrail status) for the UI.
+ *  function tools; the model must invoke exactly one (tool_choice:
+ *  "required") to choose a move, passing a `thought` (its reasoning)
+ *  and a `taunt`. The Referee invokes a score_round tool. runFighter/
+ *  runReferee wrap each call with guardrails and return rich telemetry
+ *  (tool, args, thought, latency, tokens, guardrail) for the live console.
  * ------------------------------------------------------------------ */
 
 function tool(name, description, properties, required) {
@@ -15,19 +16,20 @@ function tool(name, description, properties, required) {
   };
 }
 
+const thought = { type: "string", description: "One short sentence of your in-character reasoning for choosing THIS move." };
 const taunt = { type: "string", description: "A short, funny, in-character taunt (max ~16 words)." };
 
 export const FIGHTER_TOOLS = {
   flash: [
-    tool("infinite_mass_punch", "Throw a light-speed, infinite-mass punch.", { taunt }, ["taunt"]),
-    tool("phase_through", "Vibrate your molecules to phase through Plastic Man's attack.", { taunt }, ["taunt"]),
-    tool("steal_speed", "Siphon kinetic energy and speed away from the foe.", { taunt }, ["taunt"]),
+    tool("infinite_mass_punch", "Throw a light-speed, infinite-mass punch.", { thought, taunt }, ["thought", "taunt"]),
+    tool("phase_through", "Vibrate your molecules to phase through Plastic Man's attack.", { thought, taunt }, ["thought", "taunt"]),
+    tool("steal_speed", "Siphon kinetic energy and speed away from the foe.", { thought, taunt }, ["thought", "taunt"]),
   ],
   plastic: [
     tool("reshape", "Morph into an absurd object to counter the attack.",
-      { shape: { type: "string", description: "The absurd object or shape to become." }, taunt }, ["shape", "taunt"]),
-    tool("absorb_impact", "Absorb the hit and bounce it right back.", { taunt }, ["taunt"]),
-    tool("regenerate", "Reassemble after being shattered, frozen, or squished.", { taunt }, ["taunt"]),
+      { thought, shape: { type: "string", description: "The absurd object or shape to become." }, taunt }, ["thought", "shape", "taunt"]),
+    tool("absorb_impact", "Absorb the hit and bounce it right back.", { thought, taunt }, ["thought", "taunt"]),
+    tool("regenerate", "Reassemble after being shattered, frozen, or squished.", { thought, taunt }, ["thought", "taunt"]),
   ],
 };
 
@@ -35,10 +37,11 @@ const SCORE_TOOL = tool(
   "score_round",
   "Record the round's play-by-play and verdict.",
   {
-    narration: { type: "string", description: "Vivid, funny play-by-play, 2-3 sentences (~50 words)." },
+    thought: { type: "string", description: "One short sentence on why this edge — the referee's reasoning." },
+    narration: { type: "string", description: "Vivid, funny play-by-play, 2-3 sentences (~45 words)." },
     edge: { type: "string", enum: ["flash", "plastic", "even"], description: "Who edged the round." },
   },
-  ["narration", "edge"]
+  ["thought", "narration", "edge"]
 );
 
 export const MOVE_LABEL = {
@@ -56,16 +59,16 @@ export const AGENT_META = {
   referee: { name: "QUANTUM REFEREE", tools: ["score_round"] },
 };
 
-const FLASH_SYS = `You are Barry Allen, THE FLASH, in a comedic comic-book battle simulation against Plastic Man — fastest man alive, cocky, heroic, very funny. You MUST act by calling exactly ONE of your power tools, passing a cocky, joke-filled taunt (max 16 words). Do not reply with prose.`;
-const PM_SYS = `You are Eel O'Brian, PLASTIC MAN, in a comedic comic-book battle against the Flash — infinitely malleable, basically indestructible, a total goofball. You MUST act by calling exactly ONE of your power tools, passing a goofy, pun-filled taunt (max 16 words). Do not reply with prose.`;
-const JUDGE_SYS = `You are the QUANTUM REFEREE calling a Flash vs Plastic Man bout for a hyped lunchtime crowd. Call the score_round tool with hilarious 2-3 sentence play-by-play (~50 words) and the edge. Core running gag: the Flash cannot damage or catch the rubbery, indestructible Plastic Man — so lean into glorious stalemate energy and absurd comedy.`;
+const FLASH_SYS = `You are Barry Allen, THE FLASH, in a comedic comic-book battle simulation against Plastic Man — fastest man alive, cocky, heroic, very funny. You MUST act by calling exactly ONE of your power tools, passing your reasoning (thought) and a cocky, joke-filled taunt (max 16 words). Do not reply with prose.`;
+const PM_SYS = `You are Eel O'Brian, PLASTIC MAN, in a comedic comic-book battle against the Flash — infinitely malleable, basically indestructible, a total goofball. You MUST act by calling exactly ONE of your power tools, passing your reasoning (thought) and a goofy, pun-filled taunt (max 16 words). Do not reply with prose.`;
+const JUDGE_SYS = `You are the QUANTUM REFEREE calling a Flash vs Plastic Man bout for a hyped crowd of AI engineers. Call the score_round tool with your reasoning (thought), hilarious 2-3 sentence play-by-play (~45 words), and the edge you're told to favor. Core running gag: the Flash cannot truly damage or catch the rubbery, indestructible Plastic Man — lean into absurd comedy.`;
 const CLOSING_SYS = `You are the QUANTUM REFEREE wrapping up the bout for the crowd. Reply with ONE punchy, funny closing call (max 24 words) — plain text, no quotes, no JSON.`;
 
 const MAX_TAUNT_WORDS = 18;
 
 const FALLBACK = {
-  flash: { tool: "infinite_mass_punch", taunt: "Too slow, stretch — I lapped you twice already!" },
-  plastic: { tool: "absorb_impact", taunt: "Boing! Hit me again, it tickles, speedy!" },
+  flash: { tool: "infinite_mass_punch", thought: "Speed beats everything — I'll just hit him before he reacts.", taunt: "Too slow, stretch — I lapped you twice already!" },
+  plastic: { tool: "absorb_impact", thought: "Why dodge when I can just jiggle and bounce it back?", taunt: "Boing! Hit me again, it tickles, speedy!" },
 };
 
 function clampWords(s, n) {
@@ -79,7 +82,6 @@ function addUsage(a, b) {
   return { total_tokens: (a.total_tokens || 0) + (b.total_tokens || 0) };
 }
 
-// Pull the first tool call, or flag why it's unusable.
 function readToolCall(resp, allowed) {
   const tc = resp.tool_calls && resp.tool_calls[0];
   if (!tc || !tc.function) return { bad: "no_tool_call" };
@@ -103,8 +105,6 @@ export async function runFighter(which, user) {
   let usage = resp.usage;
   let call = readToolCall(resp, allowed);
 
-  // Guardrail: tool_choice already forces a call; if it's still missing/invalid,
-  // retry once, then fall back to a canned move.
   if (call.bad) {
     guards.push(`retry:${call.bad}`);
     resp = await chat({ system, user, tools, tool_choice: "required" });
@@ -113,7 +113,7 @@ export async function runFighter(which, user) {
   }
 
   let guard = "ok";
-  let toolName, move, taunt, args;
+  let toolName, move, taunt, thought, args;
 
   if (call.bad) {
     guard = "fallback";
@@ -122,12 +122,14 @@ export async function runFighter(which, user) {
     toolName = fb.tool;
     move = MOVE_LABEL[fb.tool];
     taunt = fb.taunt;
-    args = { taunt };
+    thought = fb.thought;
+    args = { thought, taunt };
   } else {
     toolName = call.name;
     args = call.args || {};
     move = MOVE_LABEL[toolName] || toolName;
     if (which === "plastic" && toolName === "reshape" && args.shape) move = `Reshape → ${args.shape}`;
+    thought = args.thought || FALLBACK[which].thought;
     taunt = args.taunt;
     if (!taunt) {
       taunt = FALLBACK[which].taunt;
@@ -149,6 +151,7 @@ export async function runFighter(which, user) {
     tool: toolName,
     move,
     taunt,
+    thought,
     args,
     ms: Date.now() - t0,
     tokens: usage?.total_tokens ?? null,
@@ -175,14 +178,16 @@ export async function runReferee(user) {
   }
 
   let guard = "ok";
-  let narration, edge;
+  let narration, edge, thought;
 
   if (call.bad) {
     guard = "fallback";
     guards.push(call.bad);
+    thought = "Neither landed a clean, damaging blow — pure comic stalemate energy.";
     narration = "The Flash blitzes in at light-speed; Plastic Man simply jiggles, absorbs it, snaps back, and grins. Nobody's any closer to winning.";
     edge = "even";
   } else {
+    thought = call.args.thought || "Calling it as I saw it.";
     narration = call.args.narration || "The crowd roars as the two trade blows to no decisive effect.";
     edge = call.args.edge;
     if (!["flash", "plastic", "even"].includes(edge)) {
@@ -198,6 +203,7 @@ export async function runReferee(user) {
     tool: "score_round",
     narration,
     edge,
+    thought,
     args: { edge },
     ms: Date.now() - t0,
     tokens: usage?.total_tokens ?? null,
