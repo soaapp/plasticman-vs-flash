@@ -99,34 +99,48 @@ const CSS = `
 .qs-emblem .blob { width:36px; height:36px; background:#0a0a12; border-radius:50% 50% 55% 45%; animation:morph 3.6s ease-in-out infinite; }
 @keyframes morph { 0%,100%{border-radius:50%; transform:scale(1) rotate(0)} 50%{border-radius:60% 40% 55% 45%; transform:scale(1.1) rotate(10deg)} }
 
-/* ---------- dossier modal + gallery ---------- */
-.qs-modal { position:fixed; inset:0; z-index:60; display:grid; place-items:center; padding:18px;
-  background:rgba(6,6,12,.78); backdrop-filter:blur(5px); animation:fadeIn .2s ease; }
-@keyframes fadeIn { from{opacity:0} to{opacity:1} }
-.qs-dossier { width:min(680px,100%); max-height:90vh; overflow-y:auto; position:relative; border:4px solid #000; border-radius:20px;
-  padding:0 0 28px; background:linear-gradient(165deg,#1b1526,#0b0b14); box-shadow:14px 14px 0 rgba(0,0,0,.55); animation:slamIn .45s cubic-bezier(.2,1.3,.4,1) both; }
-.qs-dossier.flash { border-top:8px solid var(--flash); } .qs-dossier.plastic { border-top:8px solid var(--plastic); }
-.qs-dossier .close { position:absolute; top:14px; right:16px; z-index:3; width:34px; height:34px; border-radius:50%; border:2px solid #000;
-  background:rgba(0,0,0,.5); color:var(--paper); font-family:'Space Mono',monospace; font-size:14px; cursor:pointer; }
-.qs-dossier .close:hover { background:rgba(0,0,0,.75); }
-.gallery { position:relative; }
-.gallery .main { width:100%; height:300px; object-fit:cover; display:block; border-bottom:3px solid #000; }
-.gallery .navbtn { position:absolute; top:130px; width:40px; height:40px; border-radius:50%; border:2px solid #000; background:rgba(0,0,0,.55);
-  color:var(--paper); cursor:pointer; display:grid; place-items:center; }
-.gallery .navbtn.prev { left:12px; } .gallery .navbtn.next { right:12px; }
-.gallery .dots { position:absolute; bottom:12px; left:0; right:0; display:flex; gap:7px; justify-content:center; }
-.gallery .dots b { width:9px; height:9px; border-radius:50%; background:rgba(255,255,255,.4); cursor:pointer; }
-.qs-dossier.flash .gallery .dots b.on { background:var(--flash); } .qs-dossier.plastic .gallery .dots b.on { background:var(--plastic); }
-.dossier-pad { padding:18px 26px 0; }
-.dossier-head { display:flex; align-items:center; gap:14px; }
-.dossier-origin { color:var(--paper); opacity:.92; line-height:1.6; margin:14px 0 0; font-size:15px; }
-.dossier-sec { margin-top:20px; }
+/* ---------- spotlight: card one side, photos sweep in opposite ---------- */
+.spot-top { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:14px; flex-wrap:wrap; }
+.spot-title { font-family:'Space Mono',monospace; letter-spacing:.2em; font-size:12px; color:var(--mute); }
+.spot-title .flash { color:var(--flash); font-weight:700; } .spot-title .plastic { color:var(--plastic); font-weight:700; }
+.spot { display:grid; gap:18px; align-items:start; }
+.spot.flash { grid-template-columns: minmax(300px, 0.95fr) 1.15fr; }    /* card | photos */
+.spot.plastic { grid-template-columns: 1.15fr minmax(300px, 0.95fr); } /* photos | card */
+@media (max-width:860px){ .spot.flash, .spot.plastic { grid-template-columns:1fr; } }
+@keyframes sweepRight { from{opacity:0; transform:translateX(72px) scale(.97)} to{opacity:1; transform:translateX(0) scale(1)} }
+@keyframes sweepLeft { from{opacity:0; transform:translateX(-72px) scale(.97)} to{opacity:1; transform:translateX(0) scale(1)} }
+
+/* photo panel — the full-size images */
+.spot-images { position:relative; border:4px solid #000; border-radius:18px; overflow:hidden; background:#0b0b14;
+  box-shadow:12px 12px 0 rgba(0,0,0,.5); min-height:clamp(380px,64vh,660px); }
+.spot.flash .spot-images { border-top:7px solid var(--plastic); animation:sweepRight .6s cubic-bezier(.2,1.1,.3,1) both; }
+.spot.plastic .spot-images { border-top:7px solid var(--flash); animation:sweepLeft .6s cubic-bezier(.2,1.1,.3,1) both; }
+.spot-images .si-rays { position:absolute; inset:0; z-index:0; opacity:.5;
+  background:repeating-conic-gradient(from 0deg at 50% 50%, transparent 0 6deg, rgba(255,255,255,.06) 6deg 7deg); animation:spin 12s linear infinite; }
+.si-photo { position:absolute; inset:0; z-index:1; width:100%; height:100%; object-fit:cover; display:block; animation:kenburns 7s ease-out both; }
+@keyframes kenburns { from{transform:scale(1.12)} to{transform:scale(1)} }
+.si-badge { position:absolute; top:12px; left:12px; z-index:3; font-family:'Space Mono',monospace; font-size:11px; letter-spacing:.12em;
+  background:rgba(0,0,0,.6); border:1px solid rgba(255,255,255,.2); border-radius:6px; padding:3px 9px; }
+.si-nav { position:absolute; top:50%; transform:translateY(-50%); z-index:3; width:44px; height:44px; border-radius:50%; border:2px solid #000;
+  background:rgba(0,0,0,.55); color:var(--paper); cursor:pointer; display:grid; place-items:center; transition:background .15s; }
+.si-nav:hover { background:rgba(0,0,0,.82); } .si-nav.prev { left:12px; } .si-nav.next { right:12px; }
+.si-dots { position:absolute; bottom:14px; left:0; right:0; z-index:3; display:flex; gap:8px; justify-content:center; }
+.si-dots b { width:11px; height:11px; border-radius:50%; background:rgba(255,255,255,.45); cursor:pointer; border:1px solid #000; }
+.spot.flash .si-dots b.on { background:var(--flash); } .spot.plastic .si-dots b.on { background:var(--plastic); }
+
+/* card panel — stats + dossier */
+.spot-card { border:4px solid #000; border-radius:18px; padding:22px; background:linear-gradient(160deg,#1b1526,#0b0b14); box-shadow:12px 12px 0 rgba(0,0,0,.5); }
+.spot.flash .spot-card { border-top:7px solid var(--flash); animation:sweepLeft .55s cubic-bezier(.2,1.05,.3,1) both; }
+.spot.plastic .spot-card { border-top:7px solid var(--plastic); animation:sweepRight .55s cubic-bezier(.2,1.05,.3,1) both; }
+.sc-head { display:flex; align-items:center; gap:14px; margin-bottom:14px; }
+.dossier-origin { color:var(--paper); opacity:.92; line-height:1.6; margin:16px 0 0; font-size:15px; }
+.dossier-sec { margin-top:18px; }
 .dossier-sec .seclab { font-family:'Space Mono',monospace; letter-spacing:.18em; font-size:11px; text-transform:uppercase; color:var(--accent); margin-bottom:10px; }
 .dossier-sec ul { margin:0; padding-left:18px; } .dossier-sec li { margin:7px 0; line-height:1.55; font-size:14.5px; }
 .clash-row { display:grid; grid-template-columns:128px 1fr; gap:12px; padding:10px 0; font-size:14px; line-height:1.5; border-top:1px solid rgba(255,255,255,.09); }
 .clash-row:first-of-type { border-top:none; padding-top:2px; }
 .clash-who { font-family:'Bangers'; letter-spacing:.03em; font-size:18px; }
-.qs-dossier.flash .clash-who { color:var(--flash); } .qs-dossier.plastic .clash-who { color:var(--plastic); }
+.spot-card.flash .clash-who { color:var(--flash); } .spot-card.plastic .clash-who { color:var(--plastic); }
 @media (max-width:520px){ .clash-row{ grid-template-columns:1fr; gap:2px; } }
 
 /* ---------- show layout: stage + console ---------- */
@@ -247,7 +261,7 @@ const CSS = `
 
 const ROUNDS = 3;
 const BEAT = { draw: 13000, clash: 7000, outcome: 21000 }; // ms per beat — generous, skippable
-const IMG_EXTS = ["png", "jpg", "jpeg", "webp"];
+const IMG_EXTS = ["jpg", "jpeg", "png", "webp"];
 
 const FX = {
   flash: ["ZOOM!", "ZIP!", "FWOOSH!", "ZAK!", "WHIP!"],
@@ -483,24 +497,33 @@ function Intro({ onStart }) {
 }
 
 function Cards({ onStart }) {
-  const [open, setOpen] = useState(null);
+  const [spot, setSpot] = useState(null); // null | "flash" | "plastic"
+  if (spot) {
+    return (
+      <Spotlight
+        which={spot}
+        onBack={() => setSpot(null)}
+        onOther={() => setSpot(spot === "flash" ? "plastic" : "flash")}
+        onStart={onStart}
+      />
+    );
+  }
   return (
     <div>
       <div style={{ textAlign: "center" }}>
         <div className="qs-kicker">Tale of the Tape</div>
         <h2 className="qs-h" style={{ fontSize: 26 }}>KNOW YOUR FIGHTERS</h2>
         <p className="qs-sub" style={{ margin: "8px auto 0", textAlign: "center" }}>
-          Tap a fighter to flip through their photos and dossier — origin, famous clashes, and iconic moments.
+          Tap a fighter for the spotlight — full-size photos sweep in beside the dossier.
         </p>
       </div>
       <div className="qs-cards">
-        <FighterCard which="flash" onOpen={setOpen} />
-        <FighterCard which="plastic" onOpen={setOpen} />
+        <FighterCard which="flash" onOpen={setSpot} />
+        <FighterCard which="plastic" onOpen={setSpot} />
       </div>
       <div className="qs-footer">
         <button className="qs-btn" onClick={onStart}><Swords size={18} /> START THE SHOW <ChevronRight size={18} /></button>
       </div>
-      {open && <Dossier which={open} onClose={() => setOpen(null)} />}
     </div>
   );
 }
@@ -525,54 +548,86 @@ function FighterCard({ which, onOpen }) {
           </div>
         ))}
         <div className="qs-powers">{f.powers.map((p) => <span className="qs-chip" key={p}>{p}</span>)}</div>
-        <div className="qs-dossier-hint"><BookOpen size={13} /> TAP FOR PHOTOS &amp; DOSSIER <ChevronRight size={13} /></div>
+        <div className="qs-dossier-hint"><BookOpen size={13} /> TAP FOR THE SPOTLIGHT <ChevronRight size={13} /></div>
       </div>
     </div>
   );
 }
 
-function Dossier({ which, onClose }) {
+// Spotlight: the chosen fighter's dossier card holds its side (Flash left,
+// Plastic Man right) while their full-size photos sweep in from the opposite edge.
+function Spotlight({ which, onBack, onOther, onStart }) {
   const f = FIGHTERS[which];
-  const d = f.dossier;
+  const other = which === "flash" ? "PLASTIC MAN" : "THE FLASH";
+  const card = <SpotCard key="card" which={which} />;
+  const images = <SpotImages key="images" which={which} />;
+  return (
+    <div>
+      <div className="spot-top">
+        <button className="qs-btn ghost sm" onClick={onBack}><ChevronLeft size={14} /> ALL FIGHTERS</button>
+        <div className="spot-title">SPOTLIGHT · <span className={which}>{f.name}</span></div>
+        <button className="qs-btn ghost sm" onClick={onOther}>{other} <ChevronRight size={14} /></button>
+      </div>
+      <div className={`spot ${which}`} key={which}>
+        {which === "flash" ? <>{card}{images}</> : <>{images}{card}</>}
+      </div>
+      <div className="qs-footer">
+        <button className="qs-btn" onClick={onStart}><Swords size={18} /> START THE SHOW <ChevronRight size={18} /></button>
+      </div>
+    </div>
+  );
+}
+
+function SpotImages({ which }) {
   const [photo, setPhoto] = useState(1);
   useEffect(() => {
     const onKey = (e) => {
-      if (e.key === "Escape") onClose();
       if (e.key === "ArrowRight") setPhoto((p) => (p % 3) + 1);
       if (e.key === "ArrowLeft") setPhoto((p) => ((p + 1) % 3) + 1);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, []);
   return (
-    <div className="qs-modal" onClick={onClose}>
-      <div className={`qs-dossier ${which}`} onClick={(e) => e.stopPropagation()} role="dialog" aria-label={`${f.name} dossier`}>
-        <button className="close" onClick={onClose} aria-label="Close dossier">✕</button>
-        <div className="gallery">
-          <HeroImg which={which} idx={photo} className="main" fallbackSize={80} />
-          <button className="navbtn prev" onClick={() => setPhoto((p) => ((p + 1) % 3) + 1)} aria-label="Previous photo"><ChevronLeft size={20} /></button>
-          <button className="navbtn next" onClick={() => setPhoto((p) => (p % 3) + 1)} aria-label="Next photo"><ChevronRight size={20} /></button>
-          <div className="dots">{[1, 2, 3].map((n) => <b key={n} className={n === photo ? "on" : ""} onClick={() => setPhoto(n)} />)}</div>
-        </div>
-        <div className="dossier-pad">
-          <div className="dossier-head">
-            <Emblem which={which} size={28} />
-            <div>
-              <h3 className={`qs-name ${which}`} style={{ fontSize: 32 }}>{f.name}</h3>
-              <div className="qs-alias" style={{ margin: 0 }}>{d.tagline}</div>
-            </div>
-          </div>
-          <p className="dossier-origin">{d.origin}</p>
-          <div className="dossier-sec">
-            <div className="seclab">Famous Clashes &amp; Team-Ups</div>
-            {d.clashes.map((c) => (
-              <div className="clash-row" key={c.who}><span className="clash-who">{c.who}</span><span>{c.note}</span></div>
-            ))}
-          </div>
-          <div className="dossier-sec"><div className="seclab">Iconic Feats</div><ul>{d.feats.map((x, i) => <li key={i}>{x}</li>)}</ul></div>
-          <div className="dossier-sec"><div className="seclab">Did You Know</div><ul>{d.trivia.map((x, i) => <li key={i}>{x}</li>)}</ul></div>
+    <div className={`spot-images ${which}`}>
+      <div className="si-rays" />
+      <HeroImg which={which} idx={photo} className="si-photo" fallbackSize={130} key={photo} />
+      <span className="si-badge">PHOTO {photo} / 3</span>
+      <button className="si-nav prev" onClick={() => setPhoto((p) => ((p + 1) % 3) + 1)} aria-label="Previous photo"><ChevronLeft size={22} /></button>
+      <button className="si-nav next" onClick={() => setPhoto((p) => (p % 3) + 1)} aria-label="Next photo"><ChevronRight size={22} /></button>
+      <div className="si-dots">{[1, 2, 3].map((n) => <b key={n} className={n === photo ? "on" : ""} onClick={() => setPhoto(n)} />)}</div>
+    </div>
+  );
+}
+
+function SpotCard({ which }) {
+  const f = FIGHTERS[which];
+  const d = f.dossier;
+  return (
+    <div className={`spot-card ${which}`}>
+      <div className="sc-head">
+        <Emblem which={which} size={30} />
+        <div>
+          <h3 className={`qs-name ${which}`} style={{ fontSize: 32 }}>{f.name}</h3>
+          <div className="qs-alias" style={{ margin: 0 }}>{d.tagline}</div>
         </div>
       </div>
+      {f.stats.map(([lab, val]) => (
+        <div className="qs-stat" key={lab}>
+          <div className="lab"><span>{lab}</span><span>{val}</span></div>
+          <div className="qs-bar"><span style={{ "--w": val + "%" }} /></div>
+        </div>
+      ))}
+      <div className="qs-powers">{f.powers.map((p) => <span className="qs-chip" key={p}>{p}</span>)}</div>
+      <p className="dossier-origin">{d.origin}</p>
+      <div className="dossier-sec">
+        <div className="seclab">Famous Clashes &amp; Team-Ups</div>
+        {d.clashes.map((c) => (
+          <div className="clash-row" key={c.who}><span className="clash-who">{c.who}</span><span>{c.note}</span></div>
+        ))}
+      </div>
+      <div className="dossier-sec"><div className="seclab">Iconic Feats</div><ul>{d.feats.map((x, i) => <li key={i}>{x}</li>)}</ul></div>
+      <div className="dossier-sec"><div className="seclab">Did You Know</div><ul>{d.trivia.map((x, i) => <li key={i}>{x}</li>)}</ul></div>
     </div>
   );
 }

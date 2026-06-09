@@ -31,7 +31,7 @@ Open **http://localhost:5173**.
 ### Hero photos
 
 Drop six images into `public/assets/` (`flash-1..3`, `plastic-1..3`) and the
-character cards + dossier gallery pick them up. See
+character cards + spotlight pick them up. See
 [`public/assets/README.md`](public/assets/README.md). Missing images fall back to
 the comic emblem, so the app runs fine without them.
 
@@ -39,9 +39,11 @@ the comic emblem, so the app runs fine without them.
 
 **Intro → Cards → The Show → Verdict.** Paced for a ~10-minute presented slot.
 
-On the **Cards** screen, tap either fighter to flip through their **3 photos** and
-a comic **dossier** — origin, famous clashes and team-ups (Superman, Batman,
-Wonder Woman, Reverse-Flash…), iconic feats, and trivia.
+On the **Cards** screen, tap either fighter for the **spotlight**: their dossier
+card holds its side while their **full-size photos sweep in** from the opposite
+edge (Flash card left / photos right; Plastic Man mirrored). Flip through the 3
+photos and read the origin, famous clashes and team-ups (Superman, Batman, Wonder
+Woman, Reverse-Flash…), iconic feats, and trivia.
 
 Then **three rounds**, each a 4-beat cinematic with the **AGENT CONSOLE** alongside:
 
