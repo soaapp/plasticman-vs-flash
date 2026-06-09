@@ -21,15 +21,17 @@ const taunt = { type: "string", description: "A short, funny, in-character taunt
 
 export const FIGHTER_TOOLS = {
   flash: [
-    tool("infinite_mass_punch", "Throw a light-speed, infinite-mass punch.", { thought, taunt }, ["thought", "taunt"]),
-    tool("phase_through", "Vibrate your molecules to phase through Plastic Man's attack.", { thought, taunt }, ["thought", "taunt"]),
-    tool("steal_speed", "Siphon kinetic energy and speed away from the foe.", { thought, taunt }, ["thought", "taunt"]),
+    tool("infinite_mass_punch", "Wind up and land a punch at near-light speed — relativistic mass hits with the force of a dwarf star. Your hardest single blow.", { thought, taunt }, ["thought", "taunt"]),
+    tool("molecular_vibration", "Vibrate your molecules — and his — at a destructive resonant frequency to phase through him or shake his very structure apart. Your true counter to an indestructible body.", { thought, taunt }, ["thought", "taunt"]),
+    tool("steal_speed", "Siphon his kinetic energy and momentum into the Speed Force, slowing the foe to a crawl.", { thought, taunt }, ["thought", "taunt"]),
+    tool("speed_force_vortex", "Run circles fast enough to spin up a Speed-Force tornado that traps, lifts, and disorients.", { thought, taunt }, ["thought", "taunt"]),
   ],
   plastic: [
-    tool("reshape", "Morph into an absurd object to counter the attack.",
+    tool("reshape", "Morph into an absurd object to absorb, deflect, or ambush the attack.",
       { thought, shape: { type: "string", description: "The absurd object or shape to become." }, taunt }, ["thought", "shape", "taunt"]),
-    tool("absorb_impact", "Absorb the hit and bounce it right back.", { thought, taunt }, ["thought", "taunt"]),
-    tool("regenerate", "Reassemble after being shattered, frozen, or squished.", { thought, taunt }, ["thought", "taunt"]),
+    tool("absorb_impact", "Go boneless and soak the hit, then bounce the force right back — near-indestructible.", { thought, taunt }, ["thought", "taunt"]),
+    tool("regenerate", "Reassemble instantly from being shattered, frozen, scattered, or vibrated apart — near-immortal.", { thought, taunt }, ["thought", "taunt"]),
+    tool("elastic_snare", "Stretch into a giant elastic net or coil to wrap up and pin the speedster.", { thought, taunt }, ["thought", "taunt"]),
   ],
 };
 
@@ -46,11 +48,13 @@ const SCORE_TOOL = tool(
 
 export const MOVE_LABEL = {
   infinite_mass_punch: "Infinite Mass Punch",
-  phase_through: "Phase Through",
+  molecular_vibration: "Molecular Vibration",
   steal_speed: "Steal Speed",
+  speed_force_vortex: "Speed-Force Vortex",
   reshape: "Reshape",
   absorb_impact: "Absorb Impact",
   regenerate: "Regenerate",
+  elastic_snare: "Elastic Snare",
 };
 
 export const AGENT_META = {
@@ -59,8 +63,8 @@ export const AGENT_META = {
   referee: { name: "REFEREE", tools: ["score_round"] },
 };
 
-const FLASH_SYS = `You are Barry Allen, THE FLASH, in a comedic comic-book battle simulation against Plastic Man — fastest man alive, cocky, heroic, very funny. You MUST act by calling exactly ONE of your power tools, passing your reasoning (thought) and a cocky, joke-filled taunt (max 16 words). Do not reply with prose.`;
-const PM_SYS = `You are Eel O'Brian, PLASTIC MAN, in a comedic comic-book battle against the Flash — infinitely malleable, basically indestructible, a total goofball. You MUST act by calling exactly ONE of your power tools, passing your reasoning (thought) and a goofy, pun-filled taunt (max 16 words). Do not reply with prose.`;
+const FLASH_SYS = `You are Barry Allen, THE FLASH, in a comedic comic-book battle simulation against Plastic Man — fastest man alive, cocky, heroic, very funny. You MUST act by calling exactly ONE of your power tools, passing your reasoning (thought) and a cocky, joke-filled taunt (max 16 words). Use your WHOLE arsenal across the bout — pick a different power than you've used before, and remember brute force alone won't dent him. Do not reply with prose.`;
+const PM_SYS = `You are Eel O'Brian, PLASTIC MAN, in a comedic comic-book battle against the Flash — infinitely malleable, basically indestructible, a total goofball. You MUST act by calling exactly ONE of your power tools, passing your reasoning (thought) and a goofy, pun-filled taunt (max 16 words). Use your WHOLE arsenal across the bout — pick a different power than you've used before. Do not reply with prose.`;
 const JUDGE_SYS = `You are the REFEREE calling a Flash vs Plastic Man bout for a hyped crowd of AI engineers. Call the score_round tool with your reasoning (thought), hilarious 2-3 sentence play-by-play (~45 words), and the edge you're told to favor. Core running gag: the Flash cannot truly damage or catch the rubbery, indestructible Plastic Man — lean into absurd comedy.`;
 const CLOSING_SYS = `You are the REFEREE wrapping up the bout for the crowd. Reply with ONE punchy, funny closing call (max 24 words) — plain text, no quotes, no JSON.`;
 

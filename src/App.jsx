@@ -409,6 +409,8 @@ export default function App() {
     // Flash so each round reads like a genuine 50/50 contest, not a sweep.
     const flashRound = Math.floor(Math.random() * ROUNDS);
     const history = [];
+    const flashUsed = []; // tools each fighter has already used, to push variety
+    const pmUsed = [];
     try {
       for (let i = 1; i <= ROUNDS; i++) {
         if (!alive()) return;
@@ -420,12 +422,16 @@ export default function App() {
         const summary = history.length
           ? history.slice(-2).map((h) => `R${h.round}: ${h.narration}`).join(" ")
           : "The bell just rang; the bout has begun.";
-        const fightState = `Round ${i} of ${ROUNDS}. Fight so far: ${summary}\nMake your move now.`;
+        const usedLine = (used) => (used.length ? `Powers you've already used: ${used.join(", ")} — choose a DIFFERENT one this round.` : "");
+        const flashState = `Round ${i} of ${ROUNDS}. Fight so far: ${summary}\n${usedLine(flashUsed)}\nMake your move now.`;
+        const pmState = `Round ${i} of ${ROUNDS}. Fight so far: ${summary}\n${usedLine(pmUsed)}\nMake your move now.`;
 
-        const flashP = runFighter("flash", fightState).then((r) => { if (alive()) pushLog({ kind: "agent", data: r }); return r; });
-        const pmP = runFighter("plastic", fightState).then((r) => { if (alive()) pushLog({ kind: "agent", data: r }); return r; });
+        const flashP = runFighter("flash", flashState).then((r) => { if (alive()) pushLog({ kind: "agent", data: r }); return r; });
+        const pmP = runFighter("plastic", pmState).then((r) => { if (alive()) pushLog({ kind: "agent", data: r }); return r; });
         const [flash, pm] = await Promise.all([flashP, pmP]);
         if (!alive()) return;
+        flashUsed.push(flash.tool);
+        pmUsed.push(pm.tool);
 
         const edge = i - 1 === flashRound ? "flash" : "plastic"; // rigged outcome
         const edgeWord = edge === "flash" ? "the Flash" : "Plastic Man";
