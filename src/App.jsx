@@ -179,8 +179,12 @@ const CSS = `
 .beat-think { position:relative; z-index:2; text-align:center; display:flex; flex-direction:column; align-items:center; gap:18px; }
 .beat-think .big { font-family:'Bangers'; font-size:clamp(44px,8vw,84px); -webkit-text-stroke:2px #000; text-shadow:5px 5px 0 #000; color:var(--paper); }
 .beat-think .cap { font-family:'Space Mono',monospace; font-size:13px; color:var(--accent); display:flex; align-items:center; gap:9px; }
-/* round-intro backdrop: a soft, blurred, colored circle (never a chopped box) */
-.spin { position:absolute; inset:0; margin:auto; width:min(620px,80vw,76vh); height:min(620px,80vw,76vh); z-index:0; border-radius:50%;
+/* round-intro backdrop: a soft, blurred, colored circle. The wrapper is
+   translate-centered (static) and a ::before holds the rotating rays — so
+   centering and spinning don't fight each other. */
+.spin { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
+  width:min(620px,80vw,76vh); height:min(620px,80vw,76vh); z-index:0; pointer-events:none; }
+.spin::before { content:""; position:absolute; inset:0; border-radius:50%;
   background:repeating-conic-gradient(from 0deg at 50% 50%, var(--accent) 0 7deg, transparent 7deg 19deg);
   -webkit-mask:radial-gradient(circle at 50% 50%, #000 16%, rgba(0,0,0,.5) 42%, transparent 64%);
   mask:radial-gradient(circle at 50% 50%, #000 16%, rgba(0,0,0,.5) 42%, transparent 64%);
@@ -198,7 +202,9 @@ const CSS = `
 .toolcard.plastic { border-top:6px solid var(--plastic); animation-delay:.18s; }
 @keyframes slamIn { 0%{opacity:0; transform:scale(1.25) translateY(-12px)} 70%{opacity:1} 85%{transform:scale(.98)} 100%{transform:scale(1) translateY(0)} }
 .tc-fighter { display:block; width:100%; height:clamp(130px,18vh,210px); object-fit:contain; object-position:center bottom;
-  margin-bottom:8px; filter:drop-shadow(0 6px 12px rgba(0,0,0,.55)); animation:cutoutPop .5s cubic-bezier(.2,1.3,.4,1) both; }
+  margin-bottom:8px; filter:drop-shadow(0 6px 12px rgba(0,0,0,.55)); animation:cutoutPop .5s cubic-bezier(.2,1.3,.4,1) both;
+  -webkit-mask:radial-gradient(78% 82% at 50% 40%, #000 56%, transparent 100%);
+  mask:radial-gradient(78% 82% at 50% 40%, #000 56%, transparent 100%); }
 @keyframes cutoutPop { from{opacity:0; transform:translateY(16px) scale(.93)} to{opacity:1; transform:translateY(0) scale(1)} }
 .tc-agent { font-family:'Space Mono',monospace; font-size:11px; letter-spacing:.12em; display:inline-flex; align-items:center; gap:6px; }
 .toolcard.flash .tc-agent { color:var(--flash); } .toolcard.plastic .tc-agent { color:var(--plastic); }
@@ -218,7 +224,9 @@ const CSS = `
 .clash-tool.r { color:var(--plastic); right:3%; text-align:right; animation:rushL 1.1s cubic-bezier(.6,0,.8,1) infinite alternate; }
 /* the fighters lunging in from each side — comic-panel battle */
 .clash-fighter { position:absolute; bottom:-2%; height:clamp(220px,52vh,420px); width:auto; max-width:48%; object-fit:contain;
-  z-index:2; pointer-events:none; filter:drop-shadow(0 8px 18px rgba(0,0,0,.6)); }
+  z-index:2; pointer-events:none; filter:drop-shadow(0 8px 18px rgba(0,0,0,.6));
+  -webkit-mask:radial-gradient(74% 84% at 50% 44%, #000 58%, transparent 100%);
+  mask:radial-gradient(74% 84% at 50% 44%, #000 58%, transparent 100%); }
 .clash-fighter.l { left:0; animation:lungeL .55s cubic-bezier(.3,1.1,.4,1) both, bobL 1.5s ease-in-out .55s infinite alternate; }
 .clash-fighter.r { right:0; animation:lungeR .55s cubic-bezier(.3,1.1,.4,1) both, bobR 1.5s ease-in-out .55s infinite alternate; }
 @keyframes lungeL { 0%{opacity:0; transform:translateX(-75%)} 100%{opacity:1; transform:translateX(0)} }
