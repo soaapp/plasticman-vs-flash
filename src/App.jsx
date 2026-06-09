@@ -179,7 +179,12 @@ const CSS = `
 .beat-think { position:relative; z-index:2; text-align:center; display:flex; flex-direction:column; align-items:center; gap:18px; }
 .beat-think .big { font-family:'Bangers'; font-size:clamp(44px,8vw,84px); -webkit-text-stroke:2px #000; text-shadow:5px 5px 0 #000; color:var(--paper); }
 .beat-think .cap { font-family:'Space Mono',monospace; font-size:13px; color:var(--accent); display:flex; align-items:center; gap:9px; }
-.spin { position:absolute; inset:0; z-index:0; opacity:.5; background:repeating-conic-gradient(from 0deg at 50% 50%, transparent 0 6deg, rgba(255,255,255,.07) 6deg 7deg); animation:spin 9s linear infinite; }
+/* round-intro backdrop: a soft, blurred, colored circle (never a chopped box) */
+.spin { position:absolute; inset:0; margin:auto; width:min(620px,80vw,76vh); height:min(620px,80vw,76vh); z-index:0; border-radius:50%;
+  background:repeating-conic-gradient(from 0deg at 50% 50%, var(--accent) 0 7deg, transparent 7deg 19deg);
+  -webkit-mask:radial-gradient(circle at 50% 50%, #000 16%, rgba(0,0,0,.5) 42%, transparent 64%);
+  mask:radial-gradient(circle at 50% 50%, #000 16%, rgba(0,0,0,.5) 42%, transparent 64%);
+  filter:blur(1.5px); opacity:.42; animation:spin 16s linear infinite; }
 @keyframes spin { to { transform:rotate(360deg); } }
 
 /* draw beat — big tool power cards */
