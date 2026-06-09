@@ -31,8 +31,8 @@ const CSS = `
 .qs-root::after { content:""; position:fixed; inset:0; pointer-events:none; z-index:0;
   background: radial-gradient(circle at 50% 40%, transparent 55%, rgba(0,0,0,.55)); }
 
-.qs-stage { position:relative; z-index:2; width:100%; max-width:1480px;
-  padding: clamp(18px,3.5vw,36px) clamp(12px,2.2vw,22px) 56px; min-height:100vh;
+.qs-stage { position:relative; z-index:2; width:100%; max-width:none;
+  padding: clamp(16px,3vw,32px) clamp(14px,2vw,40px) 56px; min-height:100vh;
   display:flex; flex-direction:column; justify-content:center; }
 
 .qs-kicker { font-family:'Space Mono',monospace; letter-spacing:.34em; font-size:11px; color:var(--accent); text-transform:uppercase; }
