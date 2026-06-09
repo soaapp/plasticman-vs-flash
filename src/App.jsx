@@ -197,6 +197,9 @@ const CSS = `
 .toolcard.flash { border-top:6px solid var(--flash); } .toolcard.flash { animation-delay:.05s; }
 .toolcard.plastic { border-top:6px solid var(--plastic); animation-delay:.18s; }
 @keyframes slamIn { 0%{opacity:0; transform:scale(1.25) translateY(-12px)} 70%{opacity:1} 85%{transform:scale(.98)} 100%{transform:scale(1) translateY(0)} }
+.tc-fighter { display:block; width:100%; height:clamp(130px,18vh,210px); object-fit:contain; object-position:center bottom;
+  margin-bottom:8px; filter:drop-shadow(0 6px 12px rgba(0,0,0,.55)); animation:cutoutPop .5s cubic-bezier(.2,1.3,.4,1) both; }
+@keyframes cutoutPop { from{opacity:0; transform:translateY(16px) scale(.93)} to{opacity:1; transform:translateY(0) scale(1)} }
 .tc-agent { font-family:'Space Mono',monospace; font-size:11px; letter-spacing:.12em; display:inline-flex; align-items:center; gap:6px; }
 .toolcard.flash .tc-agent { color:var(--flash); } .toolcard.plastic .tc-agent { color:var(--plastic); }
 .tc-tag { font-family:'Space Mono',monospace; font-size:10px; letter-spacing:.14em; color:var(--accent); border:1px solid rgba(31,224,200,.4);
@@ -209,10 +212,19 @@ const CSS = `
 
 /* clash beat */
 .beat-clash { position:relative; z-index:2; width:100%; display:grid; place-items:center; }
-.clash-stage { position:relative; width:100%; min-height:300px; display:grid; place-items:center; }
-.clash-tool { position:absolute; font-family:'Bangers'; font-size:clamp(22px,4vw,36px); -webkit-text-stroke:2px #000; }
-.clash-tool.l { color:var(--flash); left:2%; animation:rushR 1.1s cubic-bezier(.6,0,.8,1) infinite alternate; }
-.clash-tool.r { color:var(--plastic); right:2%; text-align:right; animation:rushL 1.1s cubic-bezier(.6,0,.8,1) infinite alternate; }
+.clash-stage { position:relative; width:100%; min-height:clamp(320px,46vh,440px); display:grid; place-items:center; overflow:hidden; }
+.clash-tool { position:absolute; top:6px; z-index:4; font-family:'Bangers'; font-size:clamp(20px,3.4vw,34px); -webkit-text-stroke:2px #000; text-shadow:3px 3px 0 #000; }
+.clash-tool.l { color:var(--flash); left:3%; animation:rushR 1.1s cubic-bezier(.6,0,.8,1) infinite alternate; }
+.clash-tool.r { color:var(--plastic); right:3%; text-align:right; animation:rushL 1.1s cubic-bezier(.6,0,.8,1) infinite alternate; }
+/* the fighters lunging in from each side — comic-panel battle */
+.clash-fighter { position:absolute; bottom:-2%; height:clamp(220px,52vh,420px); width:auto; max-width:48%; object-fit:contain;
+  z-index:2; pointer-events:none; filter:drop-shadow(0 8px 18px rgba(0,0,0,.6)); }
+.clash-fighter.l { left:0; animation:lungeL .55s cubic-bezier(.3,1.1,.4,1) both, bobL 1.5s ease-in-out .55s infinite alternate; }
+.clash-fighter.r { right:0; animation:lungeR .55s cubic-bezier(.3,1.1,.4,1) both, bobR 1.5s ease-in-out .55s infinite alternate; }
+@keyframes lungeL { 0%{opacity:0; transform:translateX(-75%)} 100%{opacity:1; transform:translateX(0)} }
+@keyframes lungeR { 0%{opacity:0; transform:translateX(75%)} 100%{opacity:1; transform:translateX(0)} }
+@keyframes bobL { from{transform:translateX(0) rotate(-1.5deg)} to{transform:translateX(14px) rotate(1.5deg)} }
+@keyframes bobR { from{transform:translateX(0) rotate(1.5deg)} to{transform:translateX(-14px) rotate(-1.5deg)} }
 @keyframes rushR { from{transform:translateX(0)} to{transform:translateX(40px)} }
 @keyframes rushL { from{transform:translateX(0)} to{transform:translateX(-40px)} }
 .clash-burst { position:relative; width:min(380px, 56vw, 50vh); aspect-ratio:1; display:grid; place-items:center; z-index:3; }
@@ -405,6 +417,11 @@ export default function App() {
     setError(null);
     setCurrent(null);
     skipRef.current = false;
+    // Preload the transparent fighter cutouts so they're cached before the beats.
+    ["flash-clear-1", "flash-clear-2", "plastic-clear-1", "plastic-clear-2"].forEach((n) => {
+      const im = new Image();
+      im.src = `/assets/clear-images/${n}.png`;
+    });
     // The rig: Plastic Man always takes the bout. One random round goes to the
     // Flash so each round reads like a genuine 50/50 contest, not a sweep.
     const flashRound = Math.floor(Math.random() * ROUNDS);
@@ -520,6 +537,22 @@ function HeroImg({ which, idx, className, fallbackSize = 60 }) {
       src={`/assets/${which}-${idx}.${IMG_EXTS[e]}`}
       alt={`${FIGHTERS[which].name} ${idx}`}
       onError={() => setE((x) => x + 1)}
+    />
+  );
+}
+
+// Transparent character cutout (public/assets/clear-images) — used in the
+// draw/clash beats so the fighters look like they're battling in the panel.
+function FighterCutout({ which, n, className }) {
+  const [ok, setOk] = useState(true);
+  if (!ok) return null;
+  return (
+    <img
+      className={className}
+      src={`/assets/clear-images/${which}-clear-${n}.png`}
+      alt=""
+      aria-hidden="true"
+      onError={() => setOk(false)}
     />
   );
 }
@@ -768,6 +801,7 @@ function ThinkingBeat({ roundNo }) {
 function ToolCard({ which, move, tool, taunt, shape }) {
   return (
     <div className={`toolcard ${which}`}>
+      <FighterCutout which={which} n={1} className="tc-fighter" />
       <div className="tc-agent">{which === "flash" ? <Zap size={12} fill="currentColor" /> : <span>🫳</span>} {AGENT_META[which].name}</div>
       <div><span className="tc-tag"><Wrench size={10} /> tool_call</span></div>
       <div className="tc-tool">{tool.toUpperCase()}</div>
@@ -795,6 +829,8 @@ function ClashBeat({ current }) {
   return (
     <div className="beat-clash" key={current.round}>
       <div className="clash-stage">
+        <FighterCutout which="flash" n={2} className="clash-fighter l" />
+        <FighterCutout which="plastic" n={2} className="clash-fighter r" />
         <div className="clash-tool l">{flash.tool.replace(/_/g, " ").toUpperCase()}</div>
         <div className="clash-burst" style={{ "--fx": FX_COLOR[edge] }}>
           <div className="rays" />
