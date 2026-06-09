@@ -210,9 +210,14 @@ const CSS = `
 .clash-tool.r { color:var(--plastic); right:2%; text-align:right; animation:rushL 1.1s cubic-bezier(.6,0,.8,1) infinite alternate; }
 @keyframes rushR { from{transform:translateX(0)} to{transform:translateX(40px)} }
 @keyframes rushL { from{transform:translateX(0)} to{transform:translateX(-40px)} }
-.clash-burst { width:230px; height:230px; display:grid; place-items:center; z-index:3; }
-.clash-burst .rays { position:absolute; inset:0; background:repeating-conic-gradient(from 0deg at 50% 50%, var(--fx) 0 9deg, transparent 9deg 20deg);
-  -webkit-mask:radial-gradient(circle,#000 36%, transparent 70%); mask:radial-gradient(circle,#000 36%, transparent 70%); opacity:.9; animation:spin 6s linear infinite; }
+.clash-burst { position:relative; width:min(380px, 56vw, 50vh); aspect-ratio:1; display:grid; place-items:center; z-index:3; }
+/* circular sunburst with a soft, blurred fade so it never looks chopped by the
+   stage box at any screen size */
+.clash-burst .rays { position:absolute; inset:0; border-radius:50%;
+  background:repeating-conic-gradient(from 0deg at 50% 50%, var(--fx) 0 9deg, transparent 9deg 20deg);
+  -webkit-mask:radial-gradient(circle at 50% 50%, #000 22%, rgba(0,0,0,.55) 46%, transparent 66%);
+  mask:radial-gradient(circle at 50% 50%, #000 22%, rgba(0,0,0,.55) 46%, transparent 66%);
+  filter:blur(1.2px); opacity:.92; animation:spin 6s linear infinite; }
 .clash-burst .word { position:relative; font-family:'Bangers'; font-size:clamp(40px,8vw,72px); color:var(--fx); -webkit-text-stroke:3px #000;
   text-shadow:4px 4px 0 #000; animation:fxPop .5s cubic-bezier(.2,1.7,.4,1) both, shake .5s ease-in-out .5s infinite; }
 @keyframes fxPop { 0%{transform:scale(0) rotate(-30deg); opacity:0} 70%{transform:scale(1.25) rotate(6deg)} 100%{transform:scale(1) rotate(0); opacity:1} }
@@ -235,7 +240,11 @@ const CSS = `
 /* beat progress (subtle, bottom) + skip */
 .beat-foot { display:flex; align-items:center; gap:12px; margin-top:12px; }
 .beat-foot .bar { flex:1; height:4px; background:rgba(255,255,255,.1); border-radius:3px; overflow:hidden; }
-.beat-foot .bar > i { display:block; height:100%; background:linear-gradient(90deg,var(--accent),#7fffe8); transform-origin:left; }
+.beat-foot .bar > i { display:block; height:100%; background:linear-gradient(90deg,var(--accent),#7fffe8); transform-origin:left; transition:transform .12s linear; }
+.beat-foot.paused .bar > i { background:linear-gradient(90deg,var(--flash-gold),#fff); }
+.beat-foot .foot-hint { font-family:'Space Mono',monospace; font-size:10px; letter-spacing:.1em; color:var(--mute); white-space:nowrap; }
+.pause-tag { position:absolute; top:14px; right:16px; z-index:5; font-family:'Space Mono',monospace; font-size:11px; letter-spacing:.14em;
+  color:var(--ink); background:var(--flash-gold); border:2px solid #000; border-radius:8px; padding:4px 10px; box-shadow:3px 3px 0 rgba(0,0,0,.5); }
 
 /* ---------- agent console ---------- */
 .console { border:3px solid #000; border-radius:16px; background:#0b0b12; box-shadow:8px 8px 0 rgba(0,0,0,.5); overflow:hidden;
@@ -353,17 +362,25 @@ export default function App() {
   const [log, setLog] = useState([]); // agent console entries (persists across rounds)
   const [verdict, setVerdict] = useState(null);
   const [error, setError] = useState(null);
+  const [paused, setPaused] = useState(false); // hover-to-pause the beat timer
   const skipRef = useRef(false);
   const runIdRef = useRef(0);
+  const pausedRef = useRef(false);
 
   const pushLog = (entry) => setLog((l) => [...l, { ...entry, id: l.length }]);
+  const setPause = (v) => { pausedRef.current = v; setPaused(v); };
 
+  // Beat timer that freezes while hovering (pausedRef) so the crowd can read.
   function beatWait(ms, alive) {
     return new Promise((resolve) => {
-      const start = Date.now();
+      let elapsed = 0;
+      let last = Date.now();
       setBeatProg(0);
       const id = setInterval(() => {
-        const p = Math.min(1, (Date.now() - start) / ms);
+        const now = Date.now();
+        if (!pausedRef.current) elapsed += now - last;
+        last = now;
+        const p = Math.min(1, elapsed / ms);
         setBeatProg(p);
         if (p >= 1 || skipRef.current || !alive()) {
           clearInterval(id);
@@ -441,6 +458,7 @@ export default function App() {
     setVerdict(null);
     setError(null);
     setCurrent(null);
+    setPause(false);
   }
 
   return (
@@ -455,9 +473,11 @@ export default function App() {
             beat={beat}
             current={current}
             beatProg={beatProg}
+            paused={paused}
             log={log}
             error={error}
             onSkip={() => { skipRef.current = true; }}
+            onHover={setPause}
             onRetry={runShow}
           />
         )}
@@ -504,8 +524,8 @@ function Intro({ onStart }) {
         <div className="l f">THE FLASH</div>
       </div>
       <p className="qs-sub" style={{ marginBottom: 22 }}>
-        Two AI agents pick their moves by calling real tools — their superpowers — while a Quantum
-        Referee agent scores each round. Watch the tool calls fly, the powers clash, and the agents'
+        Two AI agents pick their moves by calling real tools — their superpowers — while a Referee
+        agent scores each round. Watch the tool calls fly, the powers clash, and the agents'
         reasoning stream live. Unstoppable force, meet indestructible rubber.
       </p>
       <button className="qs-btn" onClick={onStart}>
@@ -671,7 +691,7 @@ function SpotCard({ which }) {
 }
 
 /* ----------------------------- the show --------------------------- */
-function Show({ roundNo, beat, current, beatProg, log, error, onSkip, onRetry }) {
+function Show({ roundNo, beat, current, beatProg, paused, log, error, onSkip, onHover, onRetry }) {
   if (error) {
     return (
       <div style={{ textAlign: "center" }}>
@@ -689,17 +709,24 @@ function Show({ roundNo, beat, current, beatProg, log, error, onSkip, onRetry })
       </div>
       <div className="show-grid">
         <div className="stage-wrap">
-          <div className="beatstage" style={{ "--streak": current ? edgeColorVar(current.edge) : "#fff" }}>
+          <div
+            className="beatstage"
+            style={{ "--streak": current ? edgeColorVar(current.edge) : "#fff" }}
+            onMouseEnter={() => onHover(true)}
+            onMouseLeave={() => onHover(false)}
+          >
             <div className="halftone" />
             {beat !== "outcome" && <div className="streaks" />}
             {beat === "thinking" || !current ? <ThinkingBeat roundNo={roundNo} /> : null}
             {beat === "draw" && current ? <DrawBeat current={current} /> : null}
             {beat === "clash" && current ? <ClashBeat current={current} /> : null}
             {beat === "outcome" && current ? <OutcomeBeat current={current} /> : null}
+            {paused && showFoot && <div className="pause-tag">❚❚ PAUSED — reading</div>}
           </div>
           {showFoot && (
-            <div className="beat-foot">
+            <div className={`beat-foot ${paused ? "paused" : ""}`}>
               <div className="bar"><i style={{ transform: `scaleX(${beatProg})` }} /></div>
+              <span className="foot-hint">{paused ? "hover off to resume" : "hover to pause"}</span>
               <button className="qs-btn ghost sm" onClick={onSkip}><FastForward size={14} /> NEXT</button>
             </div>
           )}
@@ -775,7 +802,7 @@ function OutcomeBeat({ current }) {
     <div className="beat-outcome" key={current.round}>
       <div className={`stamp ${edge}`}>{stampText}</div>
       <div className="ref-call">
-        <span className="ref">⚛ QUANTUM REFEREE</span>
+        <span className="ref">🦓 REFEREE</span>
         {narration}
       </div>
       <div className="outcome-quips">
@@ -845,7 +872,7 @@ function Result({ verdict, onReplay }) {
       <div className="qs-winner" style={{ color: "var(--plastic)" }}>PLASTIC MAN<br />WINS</div>
       <p className="qs-flair">The indestructible blob simply outlasts everything. The Flash threw light-speed everything he had — and you still can't beat what refuses to break.</p>
       <div className="qs-verdict">
-        <span className="ref">⚛ QUANTUM REFEREE · FINAL CALL</span>
+        <span className="ref">🦓 REFEREE · FINAL CALL</span>
         <span className="line">“{closing}”</span>
       </div>
       <div className="qs-footer"><button className="qs-btn" onClick={onReplay}><Repeat size={16} /> RUN IT BACK</button></div>

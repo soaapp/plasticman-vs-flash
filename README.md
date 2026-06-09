@@ -2,7 +2,7 @@
 
 Settle the eternal debate as a *show* for a room of AI engineers. A Flash agent
 and a Plastic Man agent pick their moves by **calling real OpenAI tools** (their
-superpowers), a Quantum Referee agent scores each round with its own tool — and a
+superpowers), a Referee agent scores each round with its own tool — and a
 **live AGENT CONSOLE** streams every agent's reasoning and tool call as it
 happens. Each round plays out as a comic-strip cinematic: the chosen tools **draw**
 as giant power-cards, the powers **clash**, and an **outcome** lands with comic FX.
@@ -70,7 +70,7 @@ Three agents, each backed by the OpenAI API and forced to act through tools
 | --- | --- |
 | **Flash** | `infinite_mass_punch`, `phase_through`, `steal_speed` |
 | **Plastic Man** | `reshape`, `absorb_impact`, `regenerate` |
-| **Quantum Referee** | `score_round` |
+| **Referee** | `score_round` |
 
 The fighters' *powers* are the tools; the model invokes one to choose its move,
 passing its `thought` (reasoning), a `taunt`, and — for `reshape` — a `shape`. The

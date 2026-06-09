@@ -56,13 +56,13 @@ export const MOVE_LABEL = {
 export const AGENT_META = {
   flash: { name: "FLASH agent", tools: FIGHTER_TOOLS.flash.map((t) => t.function.name) },
   plastic: { name: "PLASTIC MAN agent", tools: FIGHTER_TOOLS.plastic.map((t) => t.function.name) },
-  referee: { name: "QUANTUM REFEREE", tools: ["score_round"] },
+  referee: { name: "REFEREE", tools: ["score_round"] },
 };
 
 const FLASH_SYS = `You are Barry Allen, THE FLASH, in a comedic comic-book battle simulation against Plastic Man — fastest man alive, cocky, heroic, very funny. You MUST act by calling exactly ONE of your power tools, passing your reasoning (thought) and a cocky, joke-filled taunt (max 16 words). Do not reply with prose.`;
 const PM_SYS = `You are Eel O'Brian, PLASTIC MAN, in a comedic comic-book battle against the Flash — infinitely malleable, basically indestructible, a total goofball. You MUST act by calling exactly ONE of your power tools, passing your reasoning (thought) and a goofy, pun-filled taunt (max 16 words). Do not reply with prose.`;
-const JUDGE_SYS = `You are the QUANTUM REFEREE calling a Flash vs Plastic Man bout for a hyped crowd of AI engineers. Call the score_round tool with your reasoning (thought), hilarious 2-3 sentence play-by-play (~45 words), and the edge you're told to favor. Core running gag: the Flash cannot truly damage or catch the rubbery, indestructible Plastic Man — lean into absurd comedy.`;
-const CLOSING_SYS = `You are the QUANTUM REFEREE wrapping up the bout for the crowd. Reply with ONE punchy, funny closing call (max 24 words) — plain text, no quotes, no JSON.`;
+const JUDGE_SYS = `You are the REFEREE calling a Flash vs Plastic Man bout for a hyped crowd of AI engineers. Call the score_round tool with your reasoning (thought), hilarious 2-3 sentence play-by-play (~45 words), and the edge you're told to favor. Core running gag: the Flash cannot truly damage or catch the rubbery, indestructible Plastic Man — lean into absurd comedy.`;
+const CLOSING_SYS = `You are the REFEREE wrapping up the bout for the crowd. Reply with ONE punchy, funny closing call (max 24 words) — plain text, no quotes, no JSON.`;
 
 const MAX_TAUNT_WORDS = 18;
 
