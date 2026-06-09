@@ -31,8 +31,8 @@ const CSS = `
 .qs-root::after { content:""; position:fixed; inset:0; pointer-events:none; z-index:0;
   background: radial-gradient(circle at 50% 40%, transparent 55%, rgba(0,0,0,.55)); }
 
-.qs-stage { position:relative; z-index:2; width:100%; max-width:1100px;
-  padding: clamp(18px,3.5vw,36px) clamp(14px,3.5vw,26px) 56px; min-height:100vh;
+.qs-stage { position:relative; z-index:2; width:100%; max-width:1480px;
+  padding: clamp(18px,3.5vw,36px) clamp(12px,2.2vw,22px) 56px; min-height:100vh;
   display:flex; flex-direction:column; justify-content:center; }
 
 .qs-kicker { font-family:'Space Mono',monospace; letter-spacing:.34em; font-size:11px; color:var(--accent); text-transform:uppercase; }
@@ -68,12 +68,12 @@ const CSS = `
 .qs-card:hover, .qs-card:focus-visible { filter:brightness(1.07); }
 .qs-card.flash:hover { box-shadow:9px 9px 0 rgba(0,0,0,.55), 0 0 34px rgba(238,28,37,.42); }
 .qs-card.plastic:hover { box-shadow:9px 9px 0 rgba(0,0,0,.55), 0 0 34px rgba(255,45,149,.42); }
-.qs-photo { width:100%; height:230px; object-fit:cover; display:block; border-bottom:3px solid #000;
+.qs-photo { width:100%; height:clamp(230px,22vw,320px); object-fit:cover; display:block; border-bottom:3px solid #000;
   filter:saturate(1.05) contrast(1.03); }
 .qs-photowrap { position:relative; }
 .qs-photowrap .badge { position:absolute; top:10px; left:10px; font-family:'Space Mono',monospace; font-size:10px; letter-spacing:.12em;
   background:rgba(0,0,0,.6); border:1px solid rgba(255,255,255,.2); border-radius:6px; padding:3px 8px; }
-.qs-photo-fallback { width:100%; height:230px; display:grid; place-items:center; border-bottom:3px solid #000;
+.qs-photo-fallback { width:100%; height:clamp(230px,22vw,320px); display:grid; place-items:center; border-bottom:3px solid #000;
   background:radial-gradient(circle at 50% 40%, rgba(255,255,255,.05), transparent); }
 .qs-cardbody { padding:16px 18px 0; }
 .qs-name { font-family:'Bangers'; letter-spacing:.03em; font-size:30px; margin:0; }
