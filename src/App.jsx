@@ -103,30 +103,28 @@ const CSS = `
 .spot-top { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:14px; flex-wrap:wrap; }
 .spot-title { font-family:'Space Mono',monospace; letter-spacing:.2em; font-size:12px; color:var(--mute); }
 .spot-title .flash { color:var(--flash); font-weight:700; } .spot-title .plastic { color:var(--plastic); font-weight:700; }
-.spot { display:grid; gap:18px; align-items:start; }
+.spot { display:grid; gap:18px; align-items:stretch; }
 .spot.flash { grid-template-columns: minmax(300px, 0.95fr) 1.15fr; }    /* card | photos */
 .spot.plastic { grid-template-columns: 1.15fr minmax(300px, 0.95fr); } /* photos | card */
 @media (max-width:860px){ .spot.flash, .spot.plastic { grid-template-columns:1fr; } }
 @keyframes sweepRight { from{opacity:0; transform:translateX(72px) scale(.97)} to{opacity:1; transform:translateX(0) scale(1)} }
 @keyframes sweepLeft { from{opacity:0; transform:translateX(-72px) scale(.97)} to{opacity:1; transform:translateX(0) scale(1)} }
 
-/* photo panel — the full-size images */
-.spot-images { position:relative; border:4px solid #000; border-radius:18px; overflow:hidden; background:#0b0b14;
-  box-shadow:12px 12px 0 rgba(0,0,0,.5); min-height:clamp(380px,64vh,660px); }
+/* photo panel — all three full-size images stacked, filling the panel */
+.spot-images { position:relative; display:flex; flex-direction:column; border:4px solid #000; border-radius:18px; overflow:hidden;
+  background:#0b0b14; box-shadow:12px 12px 0 rgba(0,0,0,.5); min-height:clamp(440px,76vh,920px); }
 .spot.flash .spot-images { border-top:7px solid var(--plastic); animation:sweepRight .6s cubic-bezier(.2,1.1,.3,1) both; }
 .spot.plastic .spot-images { border-top:7px solid var(--flash); animation:sweepLeft .6s cubic-bezier(.2,1.1,.3,1) both; }
-.spot-images .si-rays { position:absolute; inset:0; z-index:0; opacity:.5;
-  background:repeating-conic-gradient(from 0deg at 50% 50%, transparent 0 6deg, rgba(255,255,255,.06) 6deg 7deg); animation:spin 12s linear infinite; }
-.si-photo { position:absolute; inset:0; z-index:1; width:100%; height:100%; object-fit:cover; display:block; animation:kenburns 7s ease-out both; }
-@keyframes kenburns { from{transform:scale(1.12)} to{transform:scale(1)} }
-.si-badge { position:absolute; top:12px; left:12px; z-index:3; font-family:'Space Mono',monospace; font-size:11px; letter-spacing:.12em;
-  background:rgba(0,0,0,.6); border:1px solid rgba(255,255,255,.2); border-radius:6px; padding:3px 9px; }
-.si-nav { position:absolute; top:50%; transform:translateY(-50%); z-index:3; width:44px; height:44px; border-radius:50%; border:2px solid #000;
-  background:rgba(0,0,0,.55); color:var(--paper); cursor:pointer; display:grid; place-items:center; transition:background .15s; }
-.si-nav:hover { background:rgba(0,0,0,.82); } .si-nav.prev { left:12px; } .si-nav.next { right:12px; }
-.si-dots { position:absolute; bottom:14px; left:0; right:0; z-index:3; display:flex; gap:8px; justify-content:center; }
-.si-dots b { width:11px; height:11px; border-radius:50%; background:rgba(255,255,255,.45); cursor:pointer; border:1px solid #000; }
-.spot.flash .si-dots b.on { background:var(--flash); } .spot.plastic .si-dots b.on { background:var(--plastic); }
+.spot-images .si-rays { position:absolute; inset:0; z-index:0; opacity:.4;
+  background:repeating-conic-gradient(from 0deg at 50% 50%, transparent 0 6deg, rgba(255,255,255,.06) 6deg 7deg); animation:spin 14s linear infinite; }
+.si-tile { position:relative; flex:1 1 0; min-height:0; overflow:hidden; z-index:1; border-bottom:3px solid #000;
+  animation:tileIn .5s ease both; }
+.si-tile:last-child { border-bottom:none; }
+@keyframes tileIn { from{opacity:0; transform:scale(1.06)} to{opacity:1; transform:scale(1)} }
+.si-photo { width:100%; height:100%; object-fit:cover; display:block; transition:transform .4s ease; }
+.si-tile:hover .si-photo { transform:scale(1.04); }
+.si-badge { position:absolute; top:10px; left:10px; z-index:3; font-family:'Space Mono',monospace; font-size:10px; letter-spacing:.12em;
+  background:rgba(0,0,0,.62); border:1px solid rgba(255,255,255,.2); border-radius:6px; padding:2px 8px; }
 
 /* card panel — stats + dossier */
 .spot-card { border:4px solid #000; border-radius:18px; padding:22px; background:linear-gradient(160deg,#1b1526,#0b0b14); box-shadow:12px 12px 0 rgba(0,0,0,.5); }
@@ -579,23 +577,16 @@ function Spotlight({ which, onBack, onOther, onStart }) {
 }
 
 function SpotImages({ which }) {
-  const [photo, setPhoto] = useState(1);
-  useEffect(() => {
-    const onKey = (e) => {
-      if (e.key === "ArrowRight") setPhoto((p) => (p % 3) + 1);
-      if (e.key === "ArrowLeft") setPhoto((p) => ((p + 1) % 3) + 1);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  const label = which === "flash" ? "FLASH" : "PLASTIC MAN";
   return (
     <div className={`spot-images ${which}`}>
       <div className="si-rays" />
-      <HeroImg which={which} idx={photo} className="si-photo" fallbackSize={130} key={photo} />
-      <span className="si-badge">PHOTO {photo} / 3</span>
-      <button className="si-nav prev" onClick={() => setPhoto((p) => ((p + 1) % 3) + 1)} aria-label="Previous photo"><ChevronLeft size={22} /></button>
-      <button className="si-nav next" onClick={() => setPhoto((p) => (p % 3) + 1)} aria-label="Next photo"><ChevronRight size={22} /></button>
-      <div className="si-dots">{[1, 2, 3].map((n) => <b key={n} className={n === photo ? "on" : ""} onClick={() => setPhoto(n)} />)}</div>
+      {[1, 2, 3].map((n) => (
+        <div className="si-tile" key={n} style={{ animationDelay: `${0.15 + n * 0.12}s` }}>
+          <HeroImg which={which} idx={n} className="si-photo" fallbackSize={120} />
+          <span className="si-badge">{label} · {n}/3</span>
+        </div>
+      ))}
     </div>
   );
 }
