@@ -83,8 +83,8 @@ const CSS = `
 .qs-stat .lab { display:flex; justify-content:space-between; font-size:12px; font-family:'Space Mono',monospace; color:var(--mute); margin-bottom:3px; }
 .qs-bar { height:9px; background:#000; border-radius:6px; overflow:hidden; }
 .qs-bar > span { display:block; height:100%; border-radius:6px; width:var(--w); transform-origin:left center; animation:grow 1s ease both; }
-.qs-card.flash .qs-bar > span { background:linear-gradient(90deg,var(--flash),var(--flash-gold)); }
-.qs-card.plastic .qs-bar > span { background:linear-gradient(90deg,var(--plastic),var(--plastic-gold)); }
+.qs-card.flash .qs-bar > span, .spot-card.flash .qs-bar > span { background:linear-gradient(90deg,var(--flash),var(--flash-gold)); }
+.qs-card.plastic .qs-bar > span, .spot-card.plastic .qs-bar > span { background:linear-gradient(90deg,var(--plastic),var(--plastic-gold)); }
 @keyframes grow { from { transform:scaleX(0); } to { transform:scaleX(1); } }
 .qs-powers { margin-top:14px; display:flex; flex-wrap:wrap; gap:6px; }
 .qs-chip { font-size:11px; font-family:'Space Mono',monospace; padding:4px 9px; border-radius:6px; background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.12); }
