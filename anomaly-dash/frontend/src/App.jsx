@@ -43,7 +43,7 @@ export default function App() {
         <div className="topbar-right">
           <span className="live">
             <span className={`live-dot ${source === 'sample' ? 'dot-sample' : ''}`} />
-            {source === 'live' ? 'Live · DynamoDB' : 'Sample data'}
+            {source === 'live' ? 'Live · S3' : 'Sample data'}
           </span>
           <button
             className="theme-toggle"

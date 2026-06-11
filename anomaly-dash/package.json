@@ -4,8 +4,6 @@
   "version": "0.1.0",
   "scripts": {
     "dev": "npm --prefix frontend run dev",
-    "build": "npm --prefix frontend run build",
-    "backend": "npm --prefix backend run start",
-    "seed": "npm --prefix backend run seed"
+    "build": "npm --prefix frontend run build"
   }
 }
