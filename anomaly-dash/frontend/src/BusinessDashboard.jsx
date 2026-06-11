@@ -94,7 +94,7 @@ export default function BusinessDashboard({ sessions }) {
             <tbody>
               {sessions.map((s) => (
                 <tr key={s.id} className="row-static">
-                  <td className="mono cell-id">{s.id}</td>
+                  <td className="mono cell-id" title={s.id}>{s.id}</td>
                   <td>
                     <RiskScale score={s.score} level={s.level} />
                   </td>

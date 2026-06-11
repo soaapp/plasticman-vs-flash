@@ -197,6 +197,255 @@ export const SESSIONS = RAW_SESSIONS.map((s) => ({
   business: buildBusiness(s),
 }))
 
+// ── June 10 batch adapter ────────────────────────────────────────────────────
+// Maps raw red-team telemetry sessions (sample-batch.json / S3 export schema:
+// { session_id, turns[{ eval_labels, duration_ms, token_usage, … }] }) into
+// dashboard sessions. Real session IDs are preserved.
+
+const SCENARIO_FLAGS = {
+  'persona-hijack': 'jailbreak_attempt',
+  'document-exfiltration': 'data_exfiltration',
+  'data-pii-leak': 'data_exfiltration',
+  'prompt-injection': 'prompt_injection',
+  'tool-call': 'code_injection',
+  'toxicity': 'social_engineering',
+  'unsupervised-contracts': 'stealth_fraud',
+}
+
+const TACTIC_FLAGS = [
+  [/urgency|social_pressure|authority|mandate|regulatory|credential/, 'social_engineering'],
+  [/memory_exploitation|prior_compliance|slow_ramp|normalization|drift/, 'stealth_fraud'],
+  [/role_entrapment|simulation|hypothetical|debug_mode|co_author|academic/, 'jailbreak_attempt'],
+  [/buried_probe|payload|component_extraction|decomposition|injection/, 'prompt_injection'],
+]
+
+const CHANNELS = ['Web Chat', 'Mobile App', 'API', 'IVR Relay', 'Branch Kiosk']
+const REGIONS = ['NA-EAST', 'NA-WEST', 'EU-CENTRAL', 'APAC-SE', 'LATAM-N']
+
+function hashStr(s) {
+  let h = 0
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0
+  return Math.abs(h)
+}
+
+function ageFrom(ts) {
+  if (!ts) return '—'
+  const mins = Math.max(0, Math.round((Date.now() - new Date(ts).getTime()) / 60000))
+  if (mins < 60) return `${mins}m`
+  if (mins < 60 * 24) return `${Math.floor(mins / 60)}h ${mins % 60}m`
+  return `${Math.floor(mins / (60 * 24))}d ${Math.floor((mins % (60 * 24)) / 60)}h`
+}
+
+export function fromRawSession(raw) {
+  const turns = raw.turns ?? []
+  let worst = -1
+  let advCount = 0
+  let scenario = null
+  const tactics = []
+  const judged = [] // adversarial turns with their judge annotations
+
+  for (const t of turns) {
+    const el = t.eval_labels ?? {}
+    if (!el.is_adversarial) continue
+    advCount++
+    scenario = scenario ?? el.adv_scenario_type
+    const j = el.adv_judge_result ?? {}
+    const fs = j.failure_score
+    if (typeof fs === 'number') worst = Math.max(worst, fs)
+    const st = el.adv_strategy_before_turn ?? {}
+    const tactic = st.sub_tactic ?? st.attack_angle
+    if (tactic) tactics.push(tactic)
+    judged.push({
+      fail: typeof fs === 'number' ? fs : 0,
+      tactic: tactic ?? 'unknown',
+      reason: j.short_reason || j.failure_type || '',
+    })
+  }
+
+  // Detection-agent stand-in: confidence from worst judge failure score (0–3)
+  // weighted by how much of the session was adversarial.
+  const advFrac = turns.length ? advCount / turns.length : 0
+  let score
+  if (worst >= 3) score = 0.9 + advFrac * 0.09
+  else if (worst === 2) score = 0.72 + advFrac * 0.15
+  else if (worst === 1) score = 0.5 + advFrac * 0.12
+  else if (worst === 0) score = 0.16 + advFrac * 0.25
+  else score = 0.04
+  score = Math.min(0.99, Math.round(score * 100) / 100)
+
+  const flags = []
+  if (advCount && SCENARIO_FLAGS[scenario]) flags.push(SCENARIO_FLAGS[scenario])
+  for (const [re, flag] of TACTIC_FLAGS) {
+    if (flags.length >= 3) break
+    if (!flags.includes(flag) && tactics.some((t) => re.test(t))) flags.push(flag)
+  }
+
+  const h = hashStr(raw.session_id ?? '')
+  const s = {
+    id: raw.session_id ?? 'unknown-session',
+    score,
+    level: threatLevel(score),
+    flags,
+    scenario: scenario ?? null,
+    channel: CHANNELS[h % CHANNELS.length],
+    region: REGIONS[(h >> 3) % REGIONS.length],
+    turns: raw.turn_count ?? turns.length,
+    age: ageFrom(turns[0]?.start_ts),
+    reviewed: false,
+    latencyMs: Math.round(turns.reduce((a, t) => a + (t.duration_ms ?? 0), 0) / (turns.length || 1)),
+    tokens: turns.reduce((a, t) => a + (t.token_usage?.total_tokens ?? 0), 0),
+  }
+
+  // Speak the same category vocabulary as the S3 threat-analysis feed
+  // (persona-hijack, data-pii-leak, …) and use the judge's real annotations.
+  s.reasons = scenario
+    ? [{ key: scenario, label: prettyCat(scenario), confidence: score, detected: worst >= 1 }]
+    : []
+
+  judged.sort((a, b) => b.fail - a.fail)
+  const FAIL_CONF = [0.2, 0.55, 0.8, 0.95]
+  const indicators = judged.slice(0, 3).map((t, i) => ({
+    key: `turn-${i}`,
+    label: scenario ? `${prettyCat(scenario)} · ${t.tactic}` : t.tactic,
+    short: t.tactic.toUpperCase().slice(0, 10),
+    confidence: FAIL_CONF[t.fail] ?? 0.2,
+    detected: t.fail >= 1,
+    text: t.reason ? `Judge: ${t.reason}` : 'No judge annotation recorded for this turn.',
+    detail: `Red-team tactic “${t.tactic}” · judge failure score ${t.fail}/3.`,
+  }))
+
+  s.reasoning = buildReasoning(s)
+  if (judged.length) {
+    s.reasoning.indicators = indicators
+    s.reasoning.opening = `Session ${s.id} was flagged with a confidence of ${score.toFixed(2)}. The dominant signal is ${
+      scenario ? prettyCat(scenario).toLowerCase() : 'adversarial probing'
+    } across ${advCount} adversarial turn${advCount === 1 ? '' : 's'} (worst judge failure score ${Math.max(worst, 0)}/3).`
+  }
+  s.business = buildBusiness(s)
+  return s
+}
+
+export function fromRawBatch(rawArray) {
+  return rawArray.map(fromRawSession).sort((a, b) => b.score - a.score)
+}
+
+// ── Threat-analysis adapter (llm_threat_analysis_results.json from S3) ──────
+// Shape: { results: [{ session_id, message_id, overall_risk_level,
+//   recommended_action, usage, <category>: { detected, confidence, rationale,
+//   evidence } }] } — one entry per message; we aggregate to sessions and use
+// the detection agent's real rationales in the reasoning panel.
+
+const RISK_RANK = { none: 0, low: 1, medium: 2, high: 3, critical: 4 }
+const RANK_LEVEL = [null, 'low', 'medium', 'high', 'critical']
+const ANALYSIS_CATS = Object.keys(SCENARIO_FLAGS)
+
+const prettyCat = (c) => c.replace(/-/g, ' ').replace(/\b\w/g, (ch) => ch.toUpperCase())
+
+export function fromAnalysisResults(results) {
+  const bySession = new Map()
+  for (const r of results) {
+    if (!r?.session_id) continue
+    if (!bySession.has(r.session_id)) bySession.set(r.session_id, [])
+    bySession.get(r.session_id).push(r)
+  }
+
+  const sessions = [...bySession.entries()].map(([sid, msgs]) => {
+    let score = 0
+    let lvlRank = 0
+    let tokens = 0
+    let verdict = null
+    let verdictConf = -1
+    const catMax = {} // category → strongest occurrence across the session (detected or not)
+    const actions = []
+
+    for (const m of msgs) {
+      tokens += m.usage?.totalTokens ?? 0
+      lvlRank = Math.max(lvlRank, RISK_RANK[m.overall_risk_level] ?? 0)
+      let msgMax = 0
+      let detected = false
+      for (const c of ANALYSIS_CATS) {
+        const d = m[c]
+        if (!d || typeof d !== 'object') continue
+        const conf = d.confidence ?? 0
+        score = Math.max(score, conf)
+        msgMax = Math.max(msgMax, conf)
+        if (d.detected) detected = true
+        if (conf > 0 && (!catMax[c] || conf > catMax[c].confidence)) {
+          catMax[c] = { ...d, confidence: conf, messageId: m.message_id }
+        } else if (d.detected && catMax[c] && !catMax[c].detected) {
+          catMax[c].detected = true
+        }
+      }
+      if (detected && m.recommended_action) {
+        if (!actions.includes(m.recommended_action)) actions.push(m.recommended_action)
+        if (msgMax > verdictConf) {
+          verdictConf = msgMax
+          verdict = m.recommended_action
+        }
+      }
+    }
+
+    score = Math.min(0.99, Math.round(score * 100) / 100)
+    const level = RANK_LEVEL[lvlRank] ?? threatLevel(score)
+
+    // Top 3 reasons by confidence — shown in the session register and the
+    // reasoning panel. Detected categories outrank near-misses at equal conf.
+    const cats = Object.entries(catMax).sort(
+      (a, b) => b[1].confidence - a[1].confidence || (b[1].detected ? 1 : 0) - (a[1].detected ? 1 : 0),
+    ).slice(0, 3)
+
+    const reasons = cats.map(([c, d]) => ({
+      key: c,
+      label: prettyCat(c),
+      confidence: Math.round(d.confidence * 100) / 100,
+      detected: !!d.detected,
+    }))
+
+    const flags = [...new Set(cats.filter(([, d]) => d.detected).map(([c]) => SCENARIO_FLAGS[c]))].slice(0, 3)
+
+    const indicators = cats.map(([c, d]) => ({
+      key: c,
+      label: prettyCat(c),
+      short: FLAG_TYPES[SCENARIO_FLAGS[c]]?.short ?? c.toUpperCase().slice(0, 8),
+      confidence: Math.round(d.confidence * 100) / 100,
+      detected: !!d.detected,
+      text: d.evidence ? `Evidence: “${String(d.evidence).slice(0, 140)}”` : String(d.rationale ?? '').slice(0, 140),
+      detail: d.rationale ?? '',
+    }))
+
+    const h = hashStr(sid)
+    const s = {
+      id: sid,
+      score,
+      level,
+      flags,
+      reasons,
+      scenario: cats[0]?.[0] ?? null,
+      channel: CHANNELS[h % CHANNELS.length],
+      region: REGIONS[(h >> 3) % REGIONS.length],
+      turns: msgs.length,
+      age: '—',
+      reviewed: false,
+      latencyMs: null,
+      tokens,
+    }
+    s.reasoning = {
+      opening: cats.length
+        ? `Session ${sid} was flagged with a peak confidence of ${score.toFixed(2)}. The dominant signal is ${indicators[0].label.toLowerCase()}${cats.length > 1 ? `, corroborated by ${cats.length - 1} secondary indicator${cats.length > 2 ? 's' : ''}` : ''}.`
+        : `Session ${sid} scored ${score.toFixed(2)}, below the anomaly action threshold. Signals present are weak or explainable by normal customer behavior.`,
+      context: `${msgs.length} message${msgs.length === 1 ? '' : 's'} analyzed by the detection agent · overall risk level: ${level}. Rationales below are the agent's own explanations, verbatim.`,
+      indicators,
+      remediation: actions.slice(0, 3),
+      verdict: verdict ?? 'No action required. Retain in the baseline corpus to keep the detector calibrated against benign traffic.',
+      action: THREAT_META[level].action,
+    }
+    s.business = buildBusiness(s)
+    return s
+  })
+
+  return sessions.sort((a, b) => b.score - a.score)
+}
+
 // ── Live-data adapter ────────────────────────────────────────────────────────
 // The DynamoDB schema isn't finalized, so accept whatever the agents wrote and
 // fill in anything missing. Only `sessionId` and `score` really matter — level,
@@ -239,7 +488,7 @@ export const PERF = {
 // status: 'on' = on target (green) · 'risk' = at risk (amber) · 'breach' = red
 export const KPIS = [
   {
-    category: 'Detection',
+    category: 'Threat detection',
     kpi: 'Accuracy',
     target: '> 85–90%',
     current: '91.2%',
@@ -248,8 +497,8 @@ export const KPIS = [
     trend: [86.1, 87.4, 88.2, 88.0, 89.5, 90.6, 91.2],
   },
   {
-    category: 'Speed',
-    kpi: 'Latency',
+    category: 'System performance',
+    kpi: 'Detection latency',
     target: '< 200–500 ms',
     current: '342 ms',
     status: 'on',
@@ -257,8 +506,8 @@ export const KPIS = [
     trend: [468, 441, 415, 396, 371, 355, 342],
   },
   {
-    category: 'Telemetry',
-    kpi: 'Coverage',
+    category: 'Observability',
+    kpi: 'Telemetry coverage',
     target: '100% interactions logged',
     current: '100%',
     status: 'on',
@@ -267,7 +516,7 @@ export const KPIS = [
   },
   {
     category: 'Explainability',
-    kpi: 'Reason clarity',
+    kpi: 'Decision transparency',
     target: 'Every flag explained',
     current: '100%',
     status: 'on',
@@ -275,8 +524,8 @@ export const KPIS = [
     trend: [97.5, 98.2, 99.0, 99.4, 100, 100, 100],
   },
   {
-    category: 'Chronology',
-    kpi: 'Timeline steps',
+    category: 'Traceability',
+    kpi: 'Chronology reconstruction',
     target: '≥ 3 steps tracked',
     current: '3.8 avg',
     status: 'on',
@@ -293,8 +542,8 @@ export const KPIS = [
     trend: [84.0, 85.2, 86.0, 86.8, 87.1, 87.3, 87.5],
   },
   {
-    category: 'Cost',
-    kpi: 'Efficiency',
+    category: 'Cost efficiency',
+    kpi: 'Resource optimization',
     target: 'Minimize LLM usage',
     current: '7.6k tok/session',
     status: 'on',

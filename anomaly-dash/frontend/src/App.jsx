@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import TechnicalDashboard from './TechnicalDashboard.jsx'
 import BusinessDashboard from './BusinessDashboard.jsx'
 import { useSessions } from './useSessions.js'
+import Assistant from './Assistant.jsx'
 
 const VIEWS = [
   { id: 'technical', label: 'Technical' },
@@ -21,7 +22,12 @@ export default function App() {
     <div className="shell">
       <header className="topbar">
         <div className="topbar-id">
-          <span className="topbar-mark">◈</span>
+          <img
+            className="topbar-logo"
+            src={theme === 'dark' ? '/long_logo_darkmode.png' : '/long_logo_lightmode.png'}
+            alt="BMO NextGen Cyber"
+          />
+          <div className="topbar-divider" />
           <div>
             <h1>Anomaly Watch</h1>
             <span className="topbar-sub">Financial Crimes Unit · Conversational Threat Desk</span>
@@ -43,8 +49,17 @@ export default function App() {
         <div className="topbar-right">
           <span className="live">
             <span className={`live-dot ${source === 'sample' ? 'dot-sample' : ''}`} />
-            {source === 'live' ? 'Live · S3' : 'Sample data'}
+            {source === 'merged'
+              ? 'Live · S3 + batch'
+              : source === 'live'
+                ? 'Live · S3'
+                : source === 'batch'
+                  ? 'June 10 batch'
+                  : 'Sample data'}
           </span>
+          <a className="theme-toggle scenarios-link" href="/scenarios.html">
+            ⚡ Raw scenarios
+          </a>
           <button
             className="theme-toggle"
             onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
@@ -58,8 +73,18 @@ export default function App() {
       {view === 'technical' ? <TechnicalDashboard sessions={sessions} /> : <BusinessDashboard sessions={sessions} />}
 
       <footer className="foot">
-        Anomaly Watch v0.1 · detection model fcu-sentinel-7b · reasoning model fcu-adjudicator-70b · all outputs require human adjudication
+        <img
+          className="foot-logo"
+          src={theme === 'dark' ? '/stack_logo_darkmode.png' : '/stack_logo_lightmode.png'}
+          alt="BMO NextGen Cyber"
+        />
+        <span className="foot-credit">Built with ♥ by Hackathon Team 2 · BMO NextGen Cyber</span>
+        <span className="foot-meta">
+          Anomaly Watch v0.1 · detection model fcu-sentinel-7b · reasoning model fcu-adjudicator-70b · all outputs require human adjudication
+        </span>
       </footer>
+
+      <Assistant sessions={sessions} />
     </div>
   )
 }

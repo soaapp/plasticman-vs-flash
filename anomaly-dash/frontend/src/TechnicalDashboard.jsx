@@ -139,7 +139,7 @@ export default function TechnicalDashboard({ sessions }) {
                 <th>Session ID</th>
                 <th>Confidence</th>
                 <th>Threat</th>
-                <th>Detected signals</th>
+                <th>Top signals · confidence</th>
                 <th>Channel</th>
                 <th>Latency</th>
                 <th>Tokens</th>
@@ -150,8 +150,15 @@ export default function TechnicalDashboard({ sessions }) {
             </thead>
             <tbody>
               {visible.map((s) => (
-                <tr key={s.id} className={selected?.id === s.id ? 'selected' : ''} onClick={() => setSelected(s)}>
-                  <td className="mono cell-id">{s.id}</td>
+                <tr
+                  key={s.id}
+                  className={selected?.id === s.id ? 'selected' : ''}
+                  onClick={() => setSelected(selected?.id === s.id ? null : s)}
+                >
+                  <td className="mono cell-id" title={s.id}>
+                    {s.id}
+                    {s.analyzed && <span className="live-tag">live</span>}
+                  </td>
                   <td>
                     <ScoreBar score={s.score} level={s.level} />
                   </td>
@@ -159,7 +166,17 @@ export default function TechnicalDashboard({ sessions }) {
                     <ThreatBadge level={s.level} />
                   </td>
                   <td className="cell-flags">
-                    {s.flags.length === 0 ? (
+                    {s.reasons?.length ? (
+                      s.reasons.map((r) => (
+                        <span
+                          key={r.key}
+                          className={`reason-chip ${r.confidence >= 0.65 ? 'rc-red' : r.confidence >= 0.45 ? 'rc-amber' : 'rc-low'} ${r.detected ? '' : 'rc-soft'}`}
+                          title={`${r.label} — confidence ${r.confidence.toFixed(2)}${r.detected ? '' : ' (below detection threshold)'}`}
+                        >
+                          {r.label} <b>{r.confidence.toFixed(2)}</b>
+                        </span>
+                      ))
+                    ) : s.flags.length === 0 ? (
                       <span className="flag-none">—</span>
                     ) : (
                       s.flags.map((f) => (
@@ -170,7 +187,7 @@ export default function TechnicalDashboard({ sessions }) {
                     )}
                   </td>
                   <td className="cell-dim">{s.channel}</td>
-                  <td className="cell-dim mono">{s.latencyMs} ms</td>
+                  <td className="cell-dim mono">{s.latencyMs ? `${s.latencyMs} ms` : '—'}</td>
                   <td className="cell-dim mono">{(s.tokens / 1000).toFixed(1)}k</td>
                   <td className="cell-dim mono">{s.turns}</td>
                   <td className="cell-dim mono">{s.age}</td>
@@ -192,7 +209,7 @@ export default function TechnicalDashboard({ sessions }) {
           </table>
         </div>
         <div className="table-foot">
-          {visible.length} of {sessions.length} sessions · sorted by confidence · select a row for agent analysis
+          {visible.length} of {sessions.length} sessions · sorted by confidence · "live" = scored by the S3 analysis feed · select a row for agent analysis
         </div>
       </section>
 

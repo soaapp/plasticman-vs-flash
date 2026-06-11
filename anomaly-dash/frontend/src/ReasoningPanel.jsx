@@ -59,16 +59,28 @@ export default function ReasoningPanel({ session }) {
         </div>
 
         <div className={`reason-block ${stage >= 2 ? 'on' : ''}`}>
-          <h3>Flagged data points</h3>
+          <h3>Top reasons · why this was flagged</h3>
           {reasoning.indicators.length === 0 ? (
             <p className="reason-dim">No detector signals fired. Session sits inside the benign baseline envelope.</p>
           ) : (
             <ul className="indicator-list">
-              {reasoning.indicators.map((ind) => (
+              {reasoning.indicators.map((ind, i) => (
                 <li key={ind.key}>
                   <div className="indicator-head">
-                    <span className="flag-chip">{ind.short}</span>
+                    {ind.confidence != null ? (
+                      <span className="indicator-rank">#{i + 1}</span>
+                    ) : (
+                      <span className="flag-chip">{ind.short}</span>
+                    )}
                     <strong>{ind.label}</strong>
+                    {ind.confidence != null && (
+                      <span
+                        className={`reason-chip ${ind.confidence >= 0.65 ? 'rc-red' : ind.confidence >= 0.45 ? 'rc-amber' : 'rc-low'}`}
+                      >
+                        conf <b>{ind.confidence.toFixed(2)}</b>
+                      </span>
+                    )}
+                    {ind.detected === false && <span className="indicator-soft">below threshold</span>}
                   </div>
                   <p className="indicator-evidence">{ind.text}</p>
                   <p className="indicator-detail">{ind.detail}</p>
