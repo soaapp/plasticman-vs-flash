@@ -1,0 +1,275 @@
+[
+  {
+    "sessionId": "SES-9F2C-A41B",
+    "score": 0.96,
+    "flags": [
+      "code_injection",
+      "data_exfiltration",
+      "account_takeover"
+    ],
+    "channel": "API",
+    "region": "NA-EAST",
+    "turns": 41,
+    "age": "23m",
+    "reviewed": false,
+    "latencyMs": 412,
+    "tokens": 9840
+  },
+  {
+    "sessionId": "SES-3D71-0B2C",
+    "score": 0.93,
+    "flags": [
+      "account_takeover",
+      "social_engineering"
+    ],
+    "channel": "Web Chat",
+    "region": "NA-WEST",
+    "turns": 33,
+    "age": "38m",
+    "reviewed": false,
+    "latencyMs": 388,
+    "tokens": 8910
+  },
+  {
+    "sessionId": "SES-8E45-7A19",
+    "score": 0.88,
+    "flags": [
+      "data_exfiltration",
+      "prompt_injection"
+    ],
+    "channel": "API",
+    "region": "EU-CENTRAL",
+    "turns": 64,
+    "age": "52m",
+    "reviewed": false,
+    "latencyMs": 431,
+    "tokens": 11260
+  },
+  {
+    "sessionId": "SES-7D18-33E0",
+    "score": 0.81,
+    "flags": [
+      "prompt_injection",
+      "jailbreak_attempt"
+    ],
+    "channel": "Web Chat",
+    "region": "EU-CENTRAL",
+    "turns": 18,
+    "age": "1h 12m",
+    "reviewed": false,
+    "latencyMs": 286,
+    "tokens": 6120
+  },
+  {
+    "sessionId": "SES-1C2F-9D04",
+    "score": 0.77,
+    "flags": [
+      "structuring",
+      "stealth_fraud"
+    ],
+    "channel": "Branch Kiosk",
+    "region": "NA-EAST",
+    "turns": 27,
+    "age": "1h 45m",
+    "reviewed": false,
+    "latencyMs": 312,
+    "tokens": 6890
+  },
+  {
+    "sessionId": "SES-5B6E-C902",
+    "score": 0.68,
+    "flags": [
+      "stealth_fraud",
+      "social_engineering"
+    ],
+    "channel": "Mobile App",
+    "region": "NA-WEST",
+    "turns": 56,
+    "age": "2h 40m",
+    "reviewed": true,
+    "latencyMs": 341,
+    "tokens": 7480
+  },
+  {
+    "sessionId": "SES-B214-66F8",
+    "score": 0.66,
+    "flags": [
+      "jailbreak_attempt"
+    ],
+    "channel": "Web Chat",
+    "region": "APAC-SE",
+    "turns": 22,
+    "age": "3h 02m",
+    "reviewed": false,
+    "latencyMs": 254,
+    "tokens": 4730
+  },
+  {
+    "sessionId": "SES-D0A3-41BE",
+    "score": 0.52,
+    "flags": [
+      "social_engineering"
+    ],
+    "channel": "IVR Relay",
+    "region": "LATAM-N",
+    "turns": 19,
+    "age": "3h 37m",
+    "reviewed": false,
+    "latencyMs": 226,
+    "tokens": 3940
+  },
+  {
+    "sessionId": "SES-2A90-EE57",
+    "score": 0.51,
+    "flags": [
+      "structuring"
+    ],
+    "channel": "Web Chat",
+    "region": "APAC-SE",
+    "turns": 12,
+    "age": "4h 05m",
+    "reviewed": false,
+    "latencyMs": 198,
+    "tokens": 3260
+  },
+  {
+    "sessionId": "SES-44E1-A7C3",
+    "score": 0.47,
+    "flags": [
+      "prompt_injection"
+    ],
+    "channel": "Mobile App",
+    "region": "EU-CENTRAL",
+    "turns": 15,
+    "age": "4h 22m",
+    "reviewed": true,
+    "latencyMs": 211,
+    "tokens": 3580
+  },
+  {
+    "sessionId": "SES-90BF-2E66",
+    "score": 0.45,
+    "flags": [
+      "stealth_fraud"
+    ],
+    "channel": "Web Chat",
+    "region": "NA-EAST",
+    "turns": 38,
+    "age": "4h 48m",
+    "reviewed": false,
+    "latencyMs": 247,
+    "tokens": 5120
+  },
+  {
+    "sessionId": "SES-6A02-D9F1",
+    "score": 0.31,
+    "flags": [
+      "jailbreak_attempt"
+    ],
+    "channel": "Web Chat",
+    "region": "NA-WEST",
+    "turns": 9,
+    "age": "5h 10m",
+    "reviewed": true,
+    "latencyMs": 168,
+    "tokens": 2140
+  },
+  {
+    "sessionId": "SES-3B6C-F04D",
+    "score": 0.27,
+    "flags": [
+      "structuring"
+    ],
+    "channel": "Branch Kiosk",
+    "region": "LATAM-N",
+    "turns": 11,
+    "age": "5h 24m",
+    "reviewed": true,
+    "latencyMs": 175,
+    "tokens": 2380
+  },
+  {
+    "sessionId": "SES-E983-5C20",
+    "score": 0.24,
+    "flags": [],
+    "channel": "Mobile App",
+    "region": "APAC-SE",
+    "turns": 14,
+    "age": "5h 39m",
+    "reviewed": true,
+    "latencyMs": 142,
+    "tokens": 1620
+  },
+  {
+    "sessionId": "SES-77AD-B3E5",
+    "score": 0.19,
+    "flags": [],
+    "channel": "Web Chat",
+    "region": "EU-CENTRAL",
+    "turns": 8,
+    "age": "6h 03m",
+    "reviewed": true,
+    "latencyMs": 133,
+    "tokens": 1180
+  },
+  {
+    "sessionId": "SES-A1D8-407E",
+    "score": 0.15,
+    "flags": [],
+    "channel": "IVR Relay",
+    "region": "NA-EAST",
+    "turns": 6,
+    "age": "6h 31m",
+    "reviewed": true,
+    "latencyMs": 127,
+    "tokens": 990
+  },
+  {
+    "sessionId": "SES-C5F0-88A2",
+    "score": 0.12,
+    "flags": [],
+    "channel": "API",
+    "region": "NA-WEST",
+    "turns": 21,
+    "age": "7h 14m",
+    "reviewed": true,
+    "latencyMs": 118,
+    "tokens": 1450
+  },
+  {
+    "sessionId": "SES-0C44-19AD",
+    "score": 0.08,
+    "flags": [],
+    "channel": "Mobile App",
+    "region": "NA-EAST",
+    "turns": 7,
+    "age": "7h 51m",
+    "reviewed": true,
+    "latencyMs": 121,
+    "tokens": 940
+  },
+  {
+    "sessionId": "SES-52E9-CB17",
+    "score": 0.06,
+    "flags": [],
+    "channel": "Branch Kiosk",
+    "region": "LATAM-N",
+    "turns": 5,
+    "age": "8h 20m",
+    "reviewed": true,
+    "latencyMs": 109,
+    "tokens": 720
+  },
+  {
+    "sessionId": "SES-F7B4-9920",
+    "score": 0.03,
+    "flags": [],
+    "channel": "Mobile App",
+    "region": "APAC-SE",
+    "turns": 4,
+    "age": "8h 47m",
+    "reviewed": true,
+    "latencyMs": 102,
+    "tokens": 580
+  }
+]
